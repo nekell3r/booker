@@ -1,0 +1,247 @@
+syntax = "proto3";
+
+package venue;
+
+option go_package = "booker/pkg/proto/venue";
+
+import "common/events.proto";
+
+service VenueService {
+  // Заведения
+  rpc CreateVenue(CreateVenueRequest) returns (Venue);
+  rpc GetVenue(GetVenueRequest) returns (Venue);
+  rpc ListVenues(ListVenuesRequest) returns (ListVenuesResponse);
+  rpc UpdateVenue(UpdateVenueRequest) returns (Venue);
+  rpc DeleteVenue(DeleteVenueRequest) returns (DeleteVenueResponse);
+  
+  // Залы
+  rpc CreateRoom(CreateRoomRequest) returns (Room);
+  rpc GetRoom(GetRoomRequest) returns (Room);
+  rpc ListRooms(ListRoomsRequest) returns (ListRoomsResponse);
+  rpc UpdateRoom(UpdateRoomRequest) returns (Room);
+  rpc DeleteRoom(DeleteRoomRequest) returns (DeleteRoomResponse);
+  
+  // Столы
+  rpc CreateTable(CreateTableRequest) returns (Table);
+  rpc GetTable(GetTableRequest) returns (Table);
+  rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
+  rpc UpdateTable(UpdateTableRequest) returns (Table);
+  rpc DeleteTable(DeleteTableRequest) returns (DeleteTableResponse);
+  
+  // Расписание
+  rpc SetOpeningHours(SetOpeningHoursRequest) returns (SetOpeningHoursResponse);
+  rpc GetOpeningHours(GetOpeningHoursRequest) returns (OpeningHours);
+  rpc SetSpecialHours(SetSpecialHoursRequest) returns (SetSpecialHoursResponse);
+  
+  // Доступность
+  rpc CheckAvailability(CheckAvailabilityRequest) returns (CheckAvailabilityResponse);
+  rpc GetTableLayout(GetTableLayoutRequest) returns (GetTableLayoutResponse);
+}
+
+message Venue {
+  string id = 1;
+  string name = 2;
+  string timezone = 3;
+  string address = 4;
+  int64 created_at = 5;
+  int64 updated_at = 6;
+}
+
+message Room {
+  string id = 1;
+  string venue_id = 2;
+  string name = 3;
+  int64 created_at = 4;
+  int64 updated_at = 5;
+}
+
+message Table {
+  string id = 1;
+  string room_id = 2;
+  string name = 3;
+  int32 capacity = 4;
+  bool can_merge = 5;
+  string zone = 6;
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+message OpeningHours {
+  string venue_id = 1;
+  repeated DayHours days = 2;
+}
+
+message DayHours {
+  int32 weekday = 1; // 0-6, 0=Sunday
+  string open_time = 2; // HH:MM
+  string close_time = 3; // HH:MM
+}
+
+message SpecialHours {
+  string venue_id = 1;
+  string date = 2; // YYYY-MM-DD
+  string open_time = 3;
+  string close_time = 4;
+  bool is_closed = 5;
+}
+
+// Requests
+message CreateVenueRequest {
+  string name = 1;
+  string timezone = 2;
+  string address = 3;
+}
+
+message GetVenueRequest {
+  string id = 1;
+}
+
+message ListVenuesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message UpdateVenueRequest {
+  string id = 1;
+  string name = 2;
+  string address = 3;
+}
+
+message DeleteVenueRequest {
+  string id = 1;
+}
+
+message CreateRoomRequest {
+  string venue_id = 1;
+  string name = 2;
+}
+
+message GetRoomRequest {
+  string id = 1;
+}
+
+message ListRoomsRequest {
+  string venue_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message UpdateRoomRequest {
+  string id = 1;
+  string name = 2;
+}
+
+message DeleteRoomRequest {
+  string id = 1;
+}
+
+message CreateTableRequest {
+  string room_id = 1;
+  string name = 2;
+  int32 capacity = 3;
+  bool can_merge = 4;
+  string zone = 5;
+}
+
+message GetTableRequest {
+  string id = 1;
+}
+
+message ListTablesRequest {
+  string room_id = 1;
+  string venue_id = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message UpdateTableRequest {
+  string id = 1;
+  string name = 2;
+  int32 capacity = 3;
+  string zone = 4;
+}
+
+message DeleteTableRequest {
+  string id = 1;
+}
+
+message SetOpeningHoursRequest {
+  string venue_id = 1;
+  repeated DayHours days = 2;
+}
+
+message GetOpeningHoursRequest {
+  string venue_id = 1;
+}
+
+message SetSpecialHoursRequest {
+  string venue_id = 1;
+  string date = 2;
+  string open_time = 3;
+  string close_time = 4;
+  bool is_closed = 5;
+}
+
+message CheckAvailabilityRequest {
+  string venue_id = 1;
+  common.Slot slot = 2;
+  int32 party_size = 3;
+}
+
+message CheckAvailabilityResponse {
+  repeated TableAvailability tables = 1;
+}
+
+message TableAvailability {
+  common.TableRef table = 1;
+  bool available = 2;
+  string reason = 3;
+}
+
+message GetTableLayoutRequest {
+  string venue_id = 1;
+  string room_id = 2;
+}
+
+message GetTableLayoutResponse {
+  string room_id = 1;
+  repeated Table tables = 2;
+}
+
+// Responses
+message ListVenuesResponse {
+  repeated Venue venues = 1;
+  int32 total = 2;
+}
+
+message ListRoomsResponse {
+  repeated Room rooms = 1;
+  int32 total = 2;
+}
+
+message ListTablesResponse {
+  repeated Table tables = 1;
+  int32 total = 2;
+}
+
+message SetOpeningHoursResponse {
+  bool success = 1;
+}
+
+message DeleteVenueResponse {
+  bool success = 1;
+}
+
+message DeleteRoomResponse {
+  bool success = 1;
+}
+
+message DeleteTableResponse {
+  bool success = 1;
+}
+
+message SetSpecialHoursResponse {
+  bool success = 1;
+}
+
+

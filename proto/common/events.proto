@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "booker/pkg/proto/common";
+
+// Ссылка на стол
+message TableRef {
+  string venue_id = 1;
+  string room_id = 2;
+  string table_id = 3;
+}
+
+// Временной слот
+message Slot {
+  string date = 1; // YYYY-MM-DD
+  string start_time = 2; // HH:MM
+  int32 duration_minutes = 3; // длительность в минутах
+}
+
+// Заголовки события
+message EventHeaders {
+  string trace_id = 1;
+  int64 timestamp = 2;
+  string source = 3;
+}
+
+// События бронирования
+message BookingEvent {
+  EventHeaders headers = 1;
+  string booking_id = 2;
+  TableRef table = 3;
+  Slot slot = 4;
+  int32 party_size = 5;
+  string customer_name = 6;
+  string customer_phone = 7;
+  
+  oneof payload {
+    BookingRequested requested = 10;
+    BookingHeld held = 11;
+    BookingConfirmed confirmed = 12;
+    BookingCancelled cancelled = 13;
+    BookingExpired expired = 14;
+    BookingSeated seated = 15;
+    BookingFinished finished = 16;
+    BookingNoShow no_show = 17;
+    BookingRejected rejected = 18;
+  }
+}
+
+message BookingRequested {
+  string admin_id = 1;
+  string comment = 2;
+}
+
+message BookingHeld {
+  int64 expires_at = 1; // Unix timestamp
+}
+
+message BookingConfirmed {
+  string admin_id = 1;
+}
+
+message BookingCancelled {
+  string admin_id = 1;
+  string reason = 2;
+}
+
+message BookingExpired {
+  string reason = 1;
+}
+
+message BookingSeated {
+  string admin_id = 1;
+}
+
+message BookingFinished {
+  string admin_id = 1;
+}
+
+message BookingNoShow {
+  string admin_id = 1;
+}
+
+message BookingRejected {
+  string reason = 1;
+}
+
+// События заведения
+message VenueEvent {
+  EventHeaders headers = 1;
+  string venue_id = 2;
+  
+  oneof payload {
+    TableLayoutUpdated layout_updated = 10;
+    VenueScheduleUpdated schedule_updated = 11;
+  }
+}
+
+message TableLayoutUpdated {
+  string room_id = 1;
+  repeated string table_ids = 2;
+}
+
+message VenueScheduleUpdated {
+  string date = 1; // YYYY-MM-DD или пусто для всех
+}
+
+

@@ -1,0 +1,331 @@
+# version removed - obsolete in newer docker-compose
+
+services:
+  # PostgreSQL для venue-svc
+  postgres-venue:
+    image: postgres:16-alpine
+    profiles: ["infra-min", "infra-full"]
+    environment:
+      POSTGRES_DB: venue
+      POSTGRES_USER: venue_user
+      POSTGRES_PASSWORD: venue_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-venue-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U venue_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL для booking-svc
+  postgres-booking:
+    image: postgres:16-alpine
+    profiles: ["infra-min", "infra-full"]
+    environment:
+      POSTGRES_DB: booking
+      POSTGRES_USER: booking_user
+      POSTGRES_PASSWORD: booking_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-booking-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis Sentinel (1 master + 2 replicas)
+  redis-master:
+    image: redis:7-alpine
+    profiles: ["infra-min", "infra-full"]
+    command: redis-server --requirepass redis_pass --masterauth redis_pass
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-master-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-replica1:
+    image: redis:7-alpine
+    profiles: ["infra-min", "infra-full"]
+    command: redis-server --requirepass redis_pass --masterauth redis_pass --replicaof redis-master 6379
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-replica2:
+    image: redis:7-alpine
+    profiles: ["infra-min", "infra-full"]
+    command: redis-server --requirepass redis_pass --masterauth redis_pass --replicaof redis-master 6379
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-sentinel1:
+    image: redis:7-alpine
+    profiles: ["infra-min", "infra-full"]
+    command: >
+      sh -c "
+      echo 'sentinel monitor mymaster redis-master 6379 2' > /etc/redis/sentinel.conf &&
+      echo 'sentinel auth-pass mymaster redis_pass' >> /etc/redis/sentinel.conf &&
+      echo 'sentinel down-after-milliseconds mymaster 5000' >> /etc/redis/sentinel.conf &&
+      echo 'sentinel parallel-syncs mymaster 1' >> /etc/redis/sentinel.conf &&
+      echo 'sentinel failover-timeout mymaster 10000' >> /etc/redis/sentinel.conf &&
+      redis-sentinel /etc/redis/sentinel.conf
+      "
+    depends_on:
+      - redis-master
+      - redis-replica1
+      - redis-replica2
+    ports:
+      - "26379:26379"
+
+  # Kafka (Redpanda для простоты)
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    profiles: ["infra-min", "infra-full"]
+    command:
+      - redpanda
+      - start
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr
+      - internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr
+      - internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr
+      - internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr
+      - redpanda:33145
+      - --advertise-rpc-addr
+      - redpanda:33145
+      - --smp
+      - '1'
+      - --memory
+      - 1G
+      - --mode dev-container
+      - --default-log-level=info
+    ports:
+      - "18081:18081"
+      - "18082:18082"
+      - "19092:19092"
+      - "19644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka UI
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    profiles: ["infra-min", "infra-full"]
+    ports:
+      - "8081:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=redpanda
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=redpanda:9092
+      - KAFKA_CLUSTERS_0_SCHEMAREGISTRY=http://redpanda:8081
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["infra-min", "infra-full"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["infra-min", "infra-full"]
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./deploy/grafana/datasources:/etc/grafana/provisioning/datasources
+
+  # Jaeger
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    profiles: ["infra-min", "infra-full"]
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+
+  # Admin Gateway
+  admin-gateway:
+    build:
+      context: .
+      dockerfile: cmd/admin-gateway/Dockerfile
+    profiles: ["apps"]
+    ports:
+      - "8080:8080"
+    environment:
+      - GRPC_VENUE_ADDR=venue-svc:50051
+      - GRPC_BOOKING_ADDR=booking-svc:50052
+      - REDIS_ADDR=redis-master:6379
+      - REDIS_PASSWORD=redis_pass
+      - JWT_SECRET=your-secret-key-change-in-production
+      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+    depends_on:
+      - redis-master
+      - venue-svc
+      - booking-svc
+      - jaeger
+
+  # Venue Service
+  venue-svc:
+    build:
+      context: .
+      dockerfile: cmd/venue-svc/Dockerfile
+    profiles: ["apps"]
+    ports:
+      - "50051:50051"
+      - "9091:9091"
+    environment:
+      - POSTGRES_HOST=postgres-venue
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=venue
+      - POSTGRES_USER=venue_user
+      - POSTGRES_PASSWORD=venue_pass
+      - REDIS_ADDR=redis-master:6379
+      - REDIS_PASSWORD=redis_pass
+      - KAFKA_BROKERS=redpanda:9092
+      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+      - METRICS_PORT=9091
+    depends_on:
+      postgres-venue:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+      redpanda:
+        condition: service_started
+
+  # Booking Service
+  booking-svc:
+    build:
+      context: .
+      dockerfile: cmd/booking-svc/Dockerfile
+    profiles: ["apps"]
+    ports:
+      - "50052:50052"
+      - "9092:9092"
+    environment:
+      - POSTGRES_HOST=postgres-booking
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=booking
+      - POSTGRES_USER=booking_user
+      - POSTGRES_PASSWORD=booking_pass
+      - REDIS_ADDR=redis-master:6379
+      - REDIS_PASSWORD=redis_pass
+      - KAFKA_BROKERS=redpanda:9092
+      - GRPC_VENUE_ADDR=venue-svc:50051
+      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+      - METRICS_PORT=9092
+    depends_on:
+      postgres-booking:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+      redpanda:
+        condition: service_started
+      venue-svc:
+        condition: service_started
+
+  # Notify Service
+  notify-svc:
+    build:
+      context: .
+      dockerfile: cmd/notify-svc/Dockerfile
+    profiles: ["apps"]
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+    depends_on:
+      redpanda:
+        condition: service_started
+
+  # Migration service (one-time run)
+  migrate:
+    build:
+      context: .
+      dockerfile: cmd/migrate/Dockerfile
+    profiles: ["tools"]
+    environment:
+      - VENUE_DB_USER=venue_user
+      - VENUE_DB_PASSWORD=venue_pass
+      - VENUE_DB_HOST=postgres-venue
+      - VENUE_DB_PORT=5432
+      - VENUE_DB_NAME=venue
+      - BOOKING_DB_USER=booking_user
+      - BOOKING_DB_PASSWORD=booking_pass
+      - BOOKING_DB_HOST=postgres-booking
+      - BOOKING_DB_PORT=5432
+      - BOOKING_DB_NAME=booking
+    depends_on:
+      postgres-venue:
+        condition: service_healthy
+      postgres-booking:
+        condition: service_healthy
+
+  # Seed service (one-time run)
+  seed:
+    build:
+      context: .
+      dockerfile: cmd/seed/Dockerfile
+    profiles: ["tools"]
+    environment:
+      - VENUE_DB_USER=venue_user
+      - VENUE_DB_PASSWORD=venue_pass
+      - VENUE_DB_HOST=postgres-venue
+      - VENUE_DB_PORT=5432
+      - VENUE_DB_NAME=venue
+    depends_on:
+      postgres-venue:
+        condition: service_healthy
+
+volumes:
+  postgres-venue-data:
+  postgres-booking-data:
+  redis-master-data:
+  redpanda-data:
+  prometheus-data:
+  grafana-data:
+
+

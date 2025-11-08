@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'admin-gateway'
+    static_configs:
+      - targets: ['admin-gateway:8080']
+    metrics_path: '/metrics'
+  
+  - job_name: 'venue-svc'
+    static_configs:
+      - targets: ['venue-svc:9091']
+    metrics_path: '/metrics'
+  
+  - job_name: 'booking-svc'
+    static_configs:
+      - targets: ['booking-svc:9092']
+    metrics_path: '/metrics'
+
+
+

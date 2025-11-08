@@ -1,0 +1,46 @@
+# .dockerignore
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+
+# Generated proto files (will be generated in container, but keep proto source)
+pkg/proto/**/*.pb.go
+pkg/proto/**/*_grpc.pb.go
+# But keep proto source files
+!proto/
+
+# Docker
+docker-compose.override.yml
+Dockerfile*
+
+# Documentation
+*.md
+!README.md
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Test files
+*_test.go
+

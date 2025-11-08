@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booker - Админ панель</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+        }
+        
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover {
+            background: #e0e0e0;
+        }
+        
+        .tab.active {
+            background: #3498db;
+            color: white;
+        }
+        
+        .content {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .bookings-list {
+            display: grid;
+            gap: 1rem;
+        }
+        
+        .booking-card {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .booking-info h3 {
+            margin-bottom: 0.5rem;
+        }
+        
+        .booking-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .status-held {
+            background: #f39c12;
+            color: white;
+        }
+        
+        .status-confirmed {
+            background: #3498db;
+            color: white;
+        }
+        
+        .status-seated {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .status-finished {
+            background: #95a5a6;
+            color: white;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Booker - Админ панель</h1>
+    </div>
+    
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('today')">Сегодня</button>
+            <button class="tab" onclick="showTab('bookings')">Бронирования</button>
+            <button class="tab" onclick="showTab('venues')">Заведения</button>
+        </div>
+        
+        <div class="content" id="today-tab">
+            <h2>Бронирования на сегодня</h2>
+            <div class="bookings-list" id="bookings-list">
+                <p>Загрузка...</p>
+            </div>
+            <button class="btn btn-primary" onclick="openCreateModal()" style="margin-top: 1rem;">
+                Создать бронирование
+            </button>
+        </div>
+    </div>
+    
+    <!-- Create Booking Modal -->
+    <div class="modal" id="create-modal">
+        <div class="modal-content">
+            <h2>Создать бронирование</h2>
+            <form id="create-form" onsubmit="createBooking(event)">
+                <div class="form-group">
+                    <label>Дата</label>
+                    <input type="date" id="booking-date" required>
+                </div>
+                <div class="form-group">
+                    <label>Время</label>
+                    <input type="time" id="booking-time" required>
+                </div>
+                <div class="form-group">
+                    <label>Количество гостей</label>
+                    <input type="number" id="party-size" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label>Имя гостя</label>
+                    <input type="text" id="customer-name" required>
+                </div>
+                <div class="form-group">
+                    <label>Телефон</label>
+                    <input type="tel" id="customer-phone" required>
+                </div>
+                <div class="form-group">
+                    <label>Комментарий</label>
+                    <input type="text" id="comment">
+                </div>
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                    <button type="button" class="btn" onclick="closeCreateModal()">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = '/api/v1';
+        let token = 'dummy-token'; // В реальном приложении получать из localStorage
+        
+        function showTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            // TODO: Load tab content
+        }
+        
+        async function loadBookings() {
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const response = await fetch(`${API_BASE}/bookings?date=${today}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                renderBookings(data.bookings || []);
+            } catch (error) {
+                console.error('Failed to load bookings:', error);
+                document.getElementById('bookings-list').innerHTML = '<p>Ошибка загрузки</p>';
+            }
+        }
+        
+        function renderBookings(bookings) {
+            const list = document.getElementById('bookings-list');
+            if (bookings.length === 0) {
+                list.innerHTML = '<p>Нет бронирований на сегодня</p>';
+                return;
+            }
+            
+            list.innerHTML = bookings.map(booking => `
+                <div class="booking-card">
+                    <div class="booking-info">
+                        <h3>${booking.customer_name}</h3>
+                        <p>${booking.slot.date} ${booking.slot.start_time} | ${booking.party_size} гостей</p>
+                        <p>Стол: ${booking.table.table_id}</p>
+                        <span class="status status-${booking.status}">${booking.status}</span>
+                    </div>
+                    <div class="booking-actions">
+                        ${booking.status === 'held' ? `<button class="btn btn-success" onclick="confirmBooking('${booking.id}')">Подтвердить</button>` : ''}
+                        ${booking.status === 'confirmed' ? `<button class="btn btn-success" onclick="markSeated('${booking.id}')">Посадить</button>` : ''}
+                        ${booking.status === 'seated' ? `<button class="btn btn-primary" onclick="markFinished('${booking.id}')">Завершить</button>` : ''}
+                        ${['held', 'confirmed'].includes(booking.status) ? `<button class="btn btn-danger" onclick="cancelBooking('${booking.id}')">Отменить</button>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        async function confirmBooking(id) {
+            try {
+                const response = await fetch(`${API_BASE}/bookings/${id}/confirm`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (response.ok) {
+                    loadBookings();
+                }
+            } catch (error) {
+                console.error('Failed to confirm booking:', error);
+            }
+        }
+        
+        async function markSeated(id) {
+            try {
+                const response = await fetch(`${API_BASE}/bookings/${id}/seat`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (response.ok) {
+                    loadBookings();
+                }
+            } catch (error) {
+                console.error('Failed to mark seated:', error);
+            }
+        }
+        
+        async function markFinished(id) {
+            try {
+                const response = await fetch(`${API_BASE}/bookings/${id}/finish`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (response.ok) {
+                    loadBookings();
+                }
+            } catch (error) {
+                console.error('Failed to mark finished:', error);
+            }
+        }
+        
+        async function cancelBooking(id) {
+            if (!confirm('Отменить бронирование?')) return;
+            try {
+                const response = await fetch(`${API_BASE}/bookings/${id}/cancel`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ reason: 'Отменено администратором' })
+                });
+                if (response.ok) {
+                    loadBookings();
+                }
+            } catch (error) {
+                console.error('Failed to cancel booking:', error);
+            }
+        }
+        
+        function openCreateModal() {
+            document.getElementById('create-modal').classList.add('active');
+            document.getElementById('booking-date').value = new Date().toISOString().split('T')[0];
+        }
+        
+        function closeCreateModal() {
+            document.getElementById('create-modal').classList.remove('active');
+        }
+        
+        async function createBooking(event) {
+            event.preventDefault();
+            // TODO: Get venue_id and table_id from selection
+            const booking = {
+                venue_id: 'venue-1',
+                table: {
+                    venue_id: 'venue-1',
+                    room_id: 'room-1',
+                    table_id: 'table-1'
+                },
+                slot: {
+                    date: document.getElementById('booking-date').value,
+                    start_time: document.getElementById('booking-time').value,
+                    duration_minutes: 120
+                },
+                party_size: parseInt(document.getElementById('party-size').value),
+                customer_name: document.getElementById('customer-name').value,
+                customer_phone: document.getElementById('customer-phone').value,
+                comment: document.getElementById('comment').value
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/bookings`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(booking)
+                });
+                if (response.ok) {
+                    closeCreateModal();
+                    loadBookings();
+                } else {
+                    alert('Ошибка создания бронирования');
+                }
+            } catch (error) {
+                console.error('Failed to create booking:', error);
+                alert('Ошибка создания бронирования');
+            }
+        }
+        
+        // Load bookings on page load
+        loadBookings();
+        setInterval(loadBookings, 30000); // Refresh every 30 seconds
+    </script>
+</body>
+</html>
+
+
+
