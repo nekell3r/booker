@@ -184,6 +184,47 @@
             border-radius: 4px;
             font-size: 1rem;
         }
+        
+        .venue-details {
+            margin-top: 1rem;
+        }
+        
+        .venue-details h3 {
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .room-card, .table-card {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .table-info {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .capacity-badge {
+            background: #3498db;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        
+        .back-button {
+            margin-bottom: 1rem;
+        }
+        
+        .modal-content h2 {
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -232,6 +273,25 @@
             <h2>Создать бронирование</h2>
             <form id="create-form" onsubmit="createBooking(event)">
                 <div class="form-group">
+                    <label>Заведение</label>
+                    <select id="booking-venue" required onchange="loadRoomsForBooking()">
+                        <option value="">Выберите заведение</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Зал</label>
+                    <select id="booking-room" required onchange="loadTablesForBooking()">
+                        <option value="">Сначала выберите заведение</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Стол</label>
+                    <select id="booking-table" required onchange="updateTableCapacity()">
+                        <option value="">Сначала выберите зал</option>
+                    </select>
+                    <small id="table-capacity-info" style="display: none; color: #666; margin-top: 0.25rem;"></small>
+                </div>
+                <div class="form-group">
                     <label>Дата</label>
                     <input type="date" id="booking-date" required>
                 </div>
@@ -258,6 +318,67 @@
                 <div style="display: flex; gap: 1rem; margin-top: 1rem;">
                     <button type="submit" class="btn btn-primary">Создать</button>
                     <button type="button" class="btn" onclick="closeCreateModal()">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Venue Details Modal -->
+    <div class="modal" id="venue-details-modal">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <h2 id="venue-details-title">Управление заведением</h2>
+            <div id="venue-details-content">
+                <p>Загрузка...</p>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button type="button" class="btn" onclick="closeVenueDetailsModal()">Закрыть</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Create Room Modal -->
+    <div class="modal" id="create-room-modal">
+        <div class="modal-content">
+            <h2>Создать зал</h2>
+            <form id="create-room-form" onsubmit="createRoom(event)">
+                <div class="form-group">
+                    <label>Название зала</label>
+                    <input type="text" id="room-name" required>
+                </div>
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                    <button type="button" class="btn" onclick="closeCreateRoomModal()">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Create Table Modal -->
+    <div class="modal" id="create-table-modal">
+        <div class="modal-content">
+            <h2>Создать стол</h2>
+            <form id="create-table-form" onsubmit="createTable(event)">
+                <div class="form-group">
+                    <label>Название стола</label>
+                    <input type="text" id="table-name" required>
+                </div>
+                <div class="form-group">
+                    <label>Вместимость (количество мест)</label>
+                    <input type="number" id="table-capacity" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label>Зона</label>
+                    <input type="text" id="table-zone" placeholder="Например: окно, терраса">
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="table-can-merge" style="width: auto; margin-right: 0.5rem;">
+                        Можно объединять с другими столами
+                    </label>
+                </div>
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button type="submit" class="btn btn-primary">Создать</button>
+                    <button type="button" class="btn" onclick="closeCreateTableModal()">Отмена</button>
                 </div>
             </form>
         </div>
@@ -407,9 +528,244 @@
             `).join('');
         }
         
+        let currentVenueId = null;
+        let currentRoomId = null;
+        
         async function loadVenueDetails(venueId) {
-            // TODO: Implement venue details with rooms and tables
-            alert('Детали заведения (комнаты и столы) - в разработке');
+            currentVenueId = venueId;
+            document.getElementById('venue-details-modal').classList.add('active');
+            
+            try {
+                // Load venue info
+                const venueResp = await fetch(`${API_BASE}/venues/${venueId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const venue = await venueResp.json();
+                
+                document.getElementById('venue-details-title').textContent = `Управление: ${venue.name}`;
+                
+                // Load rooms
+                const roomsResp = await fetch(`${API_BASE}/venues/${venueId}/rooms`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const roomsData = await roomsResp.json();
+                const rooms = roomsData.rooms || [];
+                
+                let html = `
+                    <div style="margin-bottom: 1rem;">
+                        <p><strong>Адрес:</strong> ${venue.address || 'Не указан'}</p>
+                    </div>
+                    <h3>Залы</h3>
+                    <button class="btn btn-primary" onclick="openCreateRoomModal('${venueId}')" style="margin-bottom: 1rem;">Создать зал</button>
+                    <div id="rooms-list">
+                `;
+                
+                if (rooms.length === 0) {
+                    html += '<p>Нет залов. Создайте первый зал.</p>';
+                } else {
+                    for (const room of rooms) {
+                        html += `
+                            <div class="room-card">
+                                <div>
+                                    <strong>${room.name}</strong>
+                                    <p style="margin: 0.25rem 0; color: #666; font-size: 0.9rem;">ID: ${room.id}</p>
+                                </div>
+                                <div class="booking-actions">
+                                    <button class="btn btn-primary" onclick="loadRoomTables('${venueId}', '${room.id}')">Управление столами</button>
+                                    <button class="btn btn-danger" onclick="deleteRoom('${venueId}', '${room.id}')">Удалить</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                html += '</div>';
+                document.getElementById('venue-details-content').innerHTML = html;
+            } catch (error) {
+                console.error('Failed to load venue details:', error);
+                document.getElementById('venue-details-content').innerHTML = '<p>Ошибка загрузки</p>';
+            }
+        }
+        
+        function closeVenueDetailsModal() {
+            document.getElementById('venue-details-modal').classList.remove('active');
+            currentVenueId = null;
+            currentRoomId = null;
+        }
+        
+        async function loadRoomTables(venueId, roomId) {
+            currentRoomId = roomId;
+            
+            try {
+                const tablesResp = await fetch(`${API_BASE}/rooms/${roomId}/tables`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const tablesData = await tablesResp.json();
+                const tables = tablesData.tables || [];
+                
+                // Load room info
+                const roomResp = await fetch(`${API_BASE}/rooms/${roomId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const room = await roomResp.json();
+                
+                let html = `
+                    <button class="btn back-button" onclick="loadVenueDetails('${venueId}')">← Назад к залам</button>
+                    <h3>Столы в зале "${room.name}"</h3>
+                    <button class="btn btn-primary" onclick="openCreateTableModal('${venueId}', '${roomId}')" style="margin-bottom: 1rem;">Создать стол</button>
+                    <div id="tables-list">
+                `;
+                
+                if (tables.length === 0) {
+                    html += '<p>Нет столов. Создайте первый стол.</p>';
+                } else {
+                    for (const table of tables) {
+                        html += `
+                            <div class="table-card">
+                                <div class="table-info">
+                                    <div>
+                                        <strong>${table.name}</strong>
+                                        <p style="margin: 0.25rem 0; color: #666; font-size: 0.9rem;">ID: ${table.id}</p>
+                                        ${table.zone ? `<p style="margin: 0.25rem 0; color: #666; font-size: 0.9rem;">Зона: ${table.zone}</p>` : ''}
+                                    </div>
+                                    <span class="capacity-badge">Вместимость: ${table.capacity}</span>
+                                    ${table.can_merge ? '<span style="color: #27ae60; font-size: 0.85rem;">✓ Можно объединять</span>' : ''}
+                                </div>
+                                <div class="booking-actions">
+                                    <button class="btn btn-danger" onclick="deleteTable('${venueId}', '${roomId}', '${table.id}')">Удалить</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                html += '</div>';
+                document.getElementById('venue-details-content').innerHTML = html;
+            } catch (error) {
+                console.error('Failed to load tables:', error);
+                alert('Ошибка загрузки столов');
+            }
+        }
+        
+        function openCreateRoomModal(venueId) {
+            currentVenueId = venueId;
+            document.getElementById('create-room-modal').classList.add('active');
+            document.getElementById('room-name').value = '';
+        }
+        
+        function closeCreateRoomModal() {
+            document.getElementById('create-room-modal').classList.remove('active');
+        }
+        
+        async function createRoom(event) {
+            event.preventDefault();
+            const name = document.getElementById('room-name').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/venues/${currentVenueId}/rooms`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name })
+                });
+                
+                if (response.ok) {
+                    closeCreateRoomModal();
+                    loadVenueDetails(currentVenueId);
+                } else {
+                    const error = await response.json();
+                    alert('Ошибка создания зала: ' + (error.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('Failed to create room:', error);
+                alert('Ошибка создания зала');
+            }
+        }
+        
+        function openCreateTableModal(venueId, roomId) {
+            currentVenueId = venueId;
+            currentRoomId = roomId;
+            document.getElementById('create-table-modal').classList.add('active');
+            document.getElementById('table-name').value = '';
+            document.getElementById('table-capacity').value = '';
+            document.getElementById('table-zone').value = '';
+            document.getElementById('table-can-merge').checked = false;
+        }
+        
+        function closeCreateTableModal() {
+            document.getElementById('create-table-modal').classList.remove('active');
+        }
+        
+        async function createTable(event) {
+            event.preventDefault();
+            const name = document.getElementById('table-name').value;
+            const capacity = parseInt(document.getElementById('table-capacity').value);
+            const zone = document.getElementById('table-zone').value;
+            const canMerge = document.getElementById('table-can-merge').checked;
+            
+            try {
+                const response = await fetch(`${API_BASE}/rooms/${currentRoomId}/tables`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, capacity, zone, can_merge: canMerge })
+                });
+                
+                if (response.ok) {
+                    closeCreateTableModal();
+                    loadRoomTables(currentVenueId, currentRoomId);
+                } else {
+                    const error = await response.json();
+                    alert('Ошибка создания стола: ' + (error.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('Failed to create table:', error);
+                alert('Ошибка создания стола');
+            }
+        }
+        
+        async function deleteRoom(venueId, roomId) {
+            if (!confirm('Удалить зал? Все столы в этом зале также будут удалены.')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/rooms/${roomId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.ok) {
+                    loadVenueDetails(venueId);
+                } else {
+                    alert('Ошибка удаления зала');
+                }
+            } catch (error) {
+                console.error('Failed to delete room:', error);
+                alert('Ошибка удаления зала');
+            }
+        }
+        
+        async function deleteTable(venueId, roomId, tableId) {
+            if (!confirm('Удалить стол?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/tables/${tableId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (response.ok) {
+                    loadRoomTables(venueId, roomId);
+                } else {
+                    alert('Ошибка удаления стола');
+                }
+            } catch (error) {
+                console.error('Failed to delete table:', error);
+                alert('Ошибка удаления стола');
+            }
         }
         
         async function deleteVenue(venueId) {
@@ -566,37 +922,308 @@
             }
         }
         
-        function openCreateModal() {
+        async function openCreateModal() {
             document.getElementById('create-modal').classList.add('active');
             document.getElementById('booking-date').value = new Date().toISOString().split('T')[0];
+            
+            // Load venues
+            try {
+                const response = await fetch(`${API_BASE}/venues`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                const venues = data.venues || [];
+                
+                const venueSelect = document.getElementById('booking-venue');
+                venueSelect.innerHTML = '<option value="">Выберите заведение</option>';
+                venues.forEach(venue => {
+                    const option = document.createElement('option');
+                    option.value = venue.id;
+                    option.textContent = venue.name;
+                    venueSelect.appendChild(option);
+                });
+                
+                // Reset other selects
+                document.getElementById('booking-room').innerHTML = '<option value="">Сначала выберите заведение</option>';
+                document.getElementById('booking-table').innerHTML = '<option value="">Сначала выберите зал</option>';
+                document.getElementById('table-capacity-info').style.display = 'none';
+            } catch (error) {
+                console.error('Failed to load venues:', error);
+            }
         }
         
         function closeCreateModal() {
             document.getElementById('create-modal').classList.remove('active');
         }
         
+        async function loadRoomsForBooking() {
+            const venueId = document.getElementById('booking-venue').value;
+            const roomSelect = document.getElementById('booking-room');
+            const tableSelect = document.getElementById('booking-table');
+            
+            roomSelect.innerHTML = '<option value="">Загрузка...</option>';
+            tableSelect.innerHTML = '<option value="">Сначала выберите зал</option>';
+            document.getElementById('table-capacity-info').style.display = 'none';
+            
+            if (!venueId) {
+                roomSelect.innerHTML = '<option value="">Сначала выберите заведение</option>';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/venues/${venueId}/rooms`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                const rooms = data.rooms || [];
+                
+                roomSelect.innerHTML = '<option value="">Выберите зал</option>';
+                rooms.forEach(room => {
+                    const option = document.createElement('option');
+                    option.value = room.id;
+                    option.textContent = room.name;
+                    roomSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load rooms:', error);
+                roomSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
+            }
+        }
+        
+        async function loadTablesForBooking() {
+            const roomId = document.getElementById('booking-room').value;
+            const tableSelect = document.getElementById('booking-table');
+            
+            tableSelect.innerHTML = '<option value="">Загрузка...</option>';
+            document.getElementById('table-capacity-info').style.display = 'none';
+            
+            if (!roomId) {
+                tableSelect.innerHTML = '<option value="">Сначала выберите зал</option>';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/rooms/${roomId}/tables`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                const tables = data.tables || [];
+                
+                tableSelect.innerHTML = '<option value="">Выберите стол</option>';
+                tables.forEach(table => {
+                    const option = document.createElement('option');
+                    option.value = table.id;
+                    option.textContent = `${table.name} (вместимость: ${table.capacity})`;
+                    option.dataset.capacity = table.capacity;
+                    option.dataset.roomId = roomId;
+                    tableSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to load tables:', error);
+                tableSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
+            }
+        }
+        
+        async function updateTableCapacity() {
+            const tableSelect = document.getElementById('booking-table');
+            const selectedOption = tableSelect.options[tableSelect.selectedIndex];
+            const capacityInfo = document.getElementById('table-capacity-info');
+            const partySizeInput = document.getElementById('party-size');
+            const partySize = parseInt(partySizeInput.value) || 0;
+            
+            // Hide merge suggestions
+            const mergeSuggestions = document.getElementById('merge-suggestions');
+            if (mergeSuggestions) {
+                mergeSuggestions.style.display = 'none';
+            }
+            
+            if (selectedOption && selectedOption.value) {
+                const capacity = parseInt(selectedOption.dataset.capacity);
+                capacityInfo.textContent = `Вместимость стола: ${capacity} мест`;
+                capacityInfo.style.display = 'block';
+                
+                // Don't restrict max value - allow user to enter any number
+                // We'll check for merge options if party size exceeds capacity
+                
+                // If party size exceeds capacity, check for merge options
+                if (partySize > capacity) {
+                    await checkMergeOptions();
+                }
+            } else {
+                capacityInfo.style.display = 'none';
+            }
+        }
+        
+        async function checkMergeOptions() {
+            const venueId = document.getElementById('booking-venue').value;
+            const roomId = document.getElementById('booking-room').value;
+            const tableId = document.getElementById('booking-table').value;
+            const partySize = parseInt(document.getElementById('party-size').value);
+            const date = document.getElementById('booking-date').value;
+            const time = document.getElementById('booking-time').value;
+            
+            if (!venueId || !date || !time || !partySize) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/availability/check`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        venue_id: venueId,
+                        slot: {
+                            date: date,
+                            start_time: time,
+                            duration_minutes: 120
+                        },
+                        party_size: partySize
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Availability check response:', JSON.stringify(data, null, 2));
+                    console.log('Tables:', data.tables);
+                    if (data.tables && data.tables.length > 0) {
+                        console.log('First table (full):', JSON.stringify(data.tables[0], null, 2));
+                        console.log('First table keys:', Object.keys(data.tables[0]));
+                        if (data.tables[0].merged_with_table) {
+                            console.log('Merged with table (snake_case):', data.tables[0].merged_with_table);
+                        }
+                        if (data.tables[0].mergedWithTable) {
+                            console.log('Merged with table (camelCase):', data.tables[0].mergedWithTable);
+                        }
+                    }
+                    showMergeSuggestions(data.tables || [], tableId);
+                }
+            } catch (error) {
+                console.error('Failed to check merge options:', error);
+            }
+        }
+        
+        function showMergeSuggestions(tables, selectedTableId) {
+            // Remove existing merge suggestions
+            let mergeDiv = document.getElementById('merge-suggestions');
+            if (!mergeDiv) {
+                mergeDiv = document.createElement('div');
+                mergeDiv.id = 'merge-suggestions';
+                mergeDiv.style.marginTop = '1rem';
+                mergeDiv.style.padding = '1rem';
+                mergeDiv.style.background = '#fff3cd';
+                mergeDiv.style.border = '1px solid #ffc107';
+                mergeDiv.style.borderRadius = '4px';
+                document.getElementById('booking-table').parentElement.appendChild(mergeDiv);
+            }
+            
+            // Filter tables that suggest merging
+            const mergeOptions = tables.filter(t => 
+                t.reason && t.reason.includes('Can be merged') && 
+                t.table.table_id === selectedTableId
+            );
+            
+            if (mergeOptions.length === 0) {
+                mergeDiv.style.display = 'none';
+                // Clear stored merge info
+                mergeDiv.dataset.mergedTableId = '';
+                mergeDiv.dataset.mergedRoomId = '';
+                return;
+            }
+            
+            // Store merged table info in dataset for later use
+            const mergeOption = mergeOptions[0];
+            console.log('Merge option:', mergeOption);
+            console.log('Merged with table (snake_case):', mergeOption.merged_with_table);
+            console.log('Merged with table (camelCase):', mergeOption.mergedWithTable);
+            
+            // Try both snake_case and camelCase (protobuf JSON can use either)
+            const mergedTable = mergeOption.merged_with_table || mergeOption.mergedWithTable;
+            if (mergedTable) {
+                const mergedTableId = mergedTable.table_id || mergedTable.tableId || '';
+                const mergedRoomId = mergedTable.room_id || mergedTable.roomId || '';
+                console.log('Storing merged table:', mergedTableId, 'room:', mergedRoomId);
+                mergeDiv.dataset.mergedTableId = mergedTableId;
+                mergeDiv.dataset.mergedRoomId = mergedRoomId;
+            } else {
+                console.warn('No merged_with_table or mergedWithTable found in merge option');
+            }
+            
+            mergeDiv.innerHTML = `
+                <strong>💡 Предложение по объединению столов:</strong>
+                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                    ${mergeOptions.map(opt => `<li>${opt.reason}</li>`).join('')}
+                </ul>
+                <small style="color: #666;">Вы можете создать бронирование на выбранный стол, и система автоматически забронирует объединенные столы.</small>
+            `;
+            mergeDiv.style.display = 'block';
+        }
+        
+        // Check merge options when party size changes
+        document.addEventListener('DOMContentLoaded', function() {
+            const partySizeInput = document.getElementById('party-size');
+            if (partySizeInput) {
+                partySizeInput.addEventListener('input', function() {
+                    setTimeout(updateTableCapacity, 300); // Debounce
+                });
+            }
+        });
+        
         async function createBooking(event) {
             event.preventDefault();
-            // TODO: Get venue_id and table_id from selection
+            
+            const venueId = document.getElementById('booking-venue').value;
+            const roomId = document.getElementById('booking-room').value;
+            const tableId = document.getElementById('booking-table').value;
+            const partySize = parseInt(document.getElementById('party-size').value);
+            
+            if (!venueId || !roomId || !tableId) {
+                alert('Пожалуйста, выберите заведение, зал и стол');
+                return;
+            }
+            
+            // Check capacity
+            const tableSelect = document.getElementById('booking-table');
+            const selectedOption = tableSelect.options[tableSelect.selectedIndex];
+            const tableCapacity = parseInt(selectedOption.dataset.capacity);
+            
+            // Check if there's a merge suggestion
+            const mergeSuggestions = document.getElementById('merge-suggestions');
+            const hasMergeOption = mergeSuggestions && mergeSuggestions.style.display !== 'none';
+            
+            if (partySize > tableCapacity && !hasMergeOption) {
+                alert(`Количество гостей (${partySize}) превышает вместимость стола (${tableCapacity}). Пожалуйста, выберите другой стол или проверьте возможность объединения.`);
+                return;
+            }
+            
+            // Get merged table info if available
+            const mergedTableId = hasMergeOption ? (mergeSuggestions.dataset.mergedTableId || '') : '';
+            const mergedRoomId = hasMergeOption ? (mergeSuggestions.dataset.mergedRoomId || '') : '';
+            console.log('Creating booking - hasMergeOption:', hasMergeOption, 'mergedTableId:', mergedTableId, 'mergedRoomId:', mergedRoomId);
+            
+            // Create booking for primary table
             const booking = {
-                venue_id: 'venue-1',
+                venue_id: venueId,
                 table: {
-                    venue_id: 'venue-1',
-                    room_id: 'room-1',
-                    table_id: 'table-1'
+                    venue_id: venueId,
+                    room_id: roomId,
+                    table_id: tableId
                 },
                 slot: {
                     date: document.getElementById('booking-date').value,
                     start_time: document.getElementById('booking-time').value,
                     duration_minutes: 120
                 },
-                party_size: parseInt(document.getElementById('party-size').value),
+                party_size: partySize,
                 customer_name: document.getElementById('customer-name').value,
                 customer_phone: document.getElementById('customer-phone').value,
                 comment: document.getElementById('comment').value
             };
             
             try {
+                // Create booking for primary table
                 const response = await fetch(`${API_BASE}/bookings`, {
                     method: 'POST',
                     headers: {
@@ -605,18 +1232,62 @@
                     },
                     body: JSON.stringify(booking)
                 });
-                if (response.ok) {
-                    closeCreateModal();
-                    // Reload current tab
-                    const activeTab = document.querySelector('.tab.active');
-                    if (activeTab && activeTab.textContent.includes('Сегодня')) {
-                        loadBookings();
-                    } else {
-                        loadAllBookings();
-                    }
-                } else {
+                
+                if (!response.ok) {
                     const error = await response.json();
-                    alert('Ошибка создания бронирования: ' + (error.error || 'Неизвестная ошибка'));
+                    alert(`Ошибка создания бронирования: ${error.error || 'Неизвестная ошибка'}`);
+                    return;
+                }
+                
+                // If there's a merged table, create booking for it too
+                if (hasMergeOption && mergedTableId) {
+                    console.log('Creating merged booking for table:', mergedTableId, 'room:', mergedRoomId);
+                    const mergedBooking = {
+                        venue_id: venueId,
+                        table: {
+                            venue_id: venueId,
+                            room_id: mergedRoomId || roomId,
+                            table_id: mergedTableId
+                        },
+                        slot: {
+                            date: document.getElementById('booking-date').value,
+                            start_time: document.getElementById('booking-time').value,
+                            duration_minutes: 120
+                        },
+                        party_size: partySize,
+                        customer_name: document.getElementById('customer-name').value,
+                        customer_phone: document.getElementById('customer-phone').value,
+                        comment: `Объединено со столом ${tableId}. ${document.getElementById('comment').value || ''}`.trim()
+                    };
+                    
+                    console.log('Sending merged booking request:', mergedBooking);
+                    const mergedResponse = await fetch(`${API_BASE}/bookings`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(mergedBooking)
+                    });
+                    
+                    console.log('Merged booking response status:', mergedResponse.status);
+                    if (!mergedResponse.ok) {
+                        const error = await mergedResponse.json();
+                        alert(`Бронирование создано для основного стола, но не удалось забронировать объединенный стол: ${error.error || 'Неизвестная ошибка'}`);
+                        loadBookings();
+                        closeCreateModal();
+                        return;
+                    }
+                }
+                
+                // Both bookings created successfully
+                closeCreateModal();
+                // Reload current tab
+                const activeTab = document.querySelector('.tab.active');
+                if (activeTab && activeTab.textContent.includes('Сегодня')) {
+                    loadBookings();
+                } else {
+                    loadAllBookings();
                 }
             } catch (error) {
                 console.error('Failed to create booking:', error);

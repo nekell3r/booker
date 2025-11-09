@@ -21,7 +21,9 @@ import (
 	"booker/pkg/metrics"
 	"booker/pkg/redis"
 	"booker/pkg/tracing"
+	bookingpb "booker/pkg/proto/booking"
 	venuepb "booker/pkg/proto/venue"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -81,8 +83,19 @@ func main() {
 	// Repository
 	repo := repository.New(pool, redisClient)
 
+	// Booking service client
+	bookingConn, err := grpc.Dial(
+		cfg.BookingSvcAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to connect to booking service")
+	}
+	defer bookingConn.Close()
+	bookingClient := bookingpb.NewBookingServiceClient(bookingConn)
+
 	// Service
-	svc := service.New(repo, producer, cfg)
+	svc := service.New(repo, producer, bookingClient, cfg)
 
 	// Start metrics server
 	startMetricsServer(cfg.MetricsPort)

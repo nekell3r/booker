@@ -28,7 +28,7 @@ services:
       POSTGRES_USER: booking_user
       POSTGRES_PASSWORD: booking_pass
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - postgres-booking-data:/var/lib/postgresql/data
     healthcheck:
@@ -192,7 +192,7 @@ services:
     profiles: ["infra-min", "infra-full"]
     ports:
       - "16686:16686"
-      - "14268:14268"
+      - "15268:14268"  # Changed external port from 14268 to 15268 (Windows port reservation)
     environment:
       - COLLECTOR_ZIPKIN_HOST_PORT=:9411
 
@@ -240,7 +240,8 @@ services:
       - REDIS_ADDR=redis-master:6379
       - REDIS_PASSWORD=redis_pass
       - KAFKA_BROKERS=redpanda:9092
-      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+      - JAEGER_ENDPOINT=http://jaeger:15268/api/traces
+      - BOOKING_SVC_ADDR=booking-svc:50052
       - METRICS_PORT=9091
     depends_on:
       postgres-venue:

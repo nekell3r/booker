@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rs/zerolog/log"
 
 	"booker/cmd/venue-svc/config"
 	"booker/cmd/venue-svc/repository"
 	"booker/pkg/kafka"
+	bookingpb "booker/pkg/proto/booking"
 	commonpb "booker/pkg/proto/common"
 	venuepb "booker/pkg/proto/venue"
 	"booker/pkg/tracing"
@@ -15,16 +17,18 @@ import (
 
 type Service struct {
 	venuepb.UnimplementedVenueServiceServer
-	repo     *repository.Repository
-	producer *kafka.Producer
-	cfg      *config.Config
+	repo          *repository.Repository
+	producer      *kafka.Producer
+	bookingClient bookingpb.BookingServiceClient
+	cfg           *config.Config
 }
 
-func New(repo *repository.Repository, producer *kafka.Producer, cfg *config.Config) *Service {
+func New(repo *repository.Repository, producer *kafka.Producer, bookingClient bookingpb.BookingServiceClient, cfg *config.Config) *Service {
 	return &Service{
-		repo:     repo,
-		producer: producer,
-		cfg:      cfg,
+		repo:          repo,
+		producer:      producer,
+		bookingClient: bookingClient,
+		cfg:           cfg,
 	}
 }
 
@@ -332,10 +336,152 @@ func (s *Service) SetSpecialHours(ctx context.Context, req *venuepb.SetSpecialHo
 }
 
 func (s *Service) CheckAvailability(ctx context.Context, req *venuepb.CheckAvailabilityRequest) (*venuepb.CheckAvailabilityResponse, error) {
-	// TODO: Implement availability check with Redis cache
-	// For now, return empty response
+	ctx, span := tracing.StartSpan(ctx, "CheckAvailability")
+	defer span.End()
+
+	// Get all tables in the venue
+	allTables, _, err := s.repo.ListTables(ctx, "", req.VenueId, 1000, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(allTables) == 0 {
+		return &venuepb.CheckAvailabilityResponse{
+			Tables: []*venuepb.TableAvailability{},
+		}, nil
+	}
+
+	// Collect table IDs
+	tableIDs := make([]string, 0, len(allTables))
+	tableMap := make(map[string]*repository.Table)
+	for _, table := range allTables {
+		tableIDs = append(tableIDs, table.ID)
+		tableMap[table.ID] = table
+	}
+
+	// Check availability via booking service
+	availabilityResp, err := s.bookingClient.CheckTableAvailability(ctx, &bookingpb.CheckTableAvailabilityRequest{
+		VenueId:  req.VenueId,
+		TableIds: tableIDs,
+		Slot:     req.Slot,
+	})
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to check table availability, assuming all available")
+		// Continue with all tables marked as available
+	}
+
+	// Build availability map
+	availabilityMap := make(map[string]bool)
+	for _, info := range availabilityResp.GetTables() {
+		availabilityMap[info.TableId] = info.Available
+	}
+
+	// Find tables that can accommodate party size
+	result := make([]*venuepb.TableAvailability, 0)
+
+	// First, find single tables that can accommodate
+	for _, table := range allTables {
+		available := availabilityMap[table.ID]
+		if !available {
+			continue
+		}
+
+		if table.Capacity >= req.PartySize {
+			// Get room info for table ref
+			room, err := s.repo.GetRoom(ctx, table.RoomID)
+			if err != nil {
+				log.Warn().Err(err).Str("room_id", table.RoomID).Msg("Failed to get room")
+				continue
+			}
+
+			result = append(result, &venuepb.TableAvailability{
+				Table: &commonpb.TableRef{
+					VenueId: req.VenueId,
+					RoomId:  room.ID,
+					TableId: table.ID,
+				},
+				Available: true,
+				Reason:    "",
+			})
+		}
+	}
+
+	// If no single table can accommodate, look for mergeable tables
+	if len(result) == 0 {
+		// Find pairs of mergeable tables that together can accommodate
+		// We need to add both directions (table1+table2 and table2+table1)
+		// so that regardless of which table is selected, we can find the merge option
+		for i, table1 := range allTables {
+			if !table1.CanMerge || !availabilityMap[table1.ID] {
+				continue
+			}
+
+			for j, table2 := range allTables {
+				// Skip same table and ensure we only check each pair once
+				if i >= j || !table2.CanMerge || !availabilityMap[table2.ID] {
+					continue
+				}
+
+				// Check if they're in the same room (can be merged)
+				if table1.RoomID != table2.RoomID {
+					continue
+				}
+
+				totalCapacity := table1.Capacity + table2.Capacity
+				if totalCapacity >= req.PartySize {
+					room, err := s.repo.GetRoom(ctx, table1.RoomID)
+					if err != nil {
+						log.Warn().Err(err).Str("room_id", table1.RoomID).Msg("Failed to get room")
+						continue
+					}
+
+					// Add both directions: (table1, table2) and (table2, table1)
+					// This ensures that regardless of which table is selected,
+					// we can find the merge option
+
+					// Option 1: table1 as primary, table2 as merged
+					result = append(result, &venuepb.TableAvailability{
+						Table: &commonpb.TableRef{
+							VenueId: req.VenueId,
+							RoomId:  room.ID,
+							TableId: table1.ID,
+						},
+						Available: true,
+						Reason:    fmt.Sprintf("Can be merged with table %s (total capacity: %d)", table2.Name, totalCapacity),
+						MergedWithTable: &commonpb.TableRef{
+							VenueId: req.VenueId,
+							RoomId:  room.ID,
+							TableId: table2.ID,
+						},
+					})
+
+					// Option 2: table2 as primary, table1 as merged
+					result = append(result, &venuepb.TableAvailability{
+						Table: &commonpb.TableRef{
+							VenueId: req.VenueId,
+							RoomId:  room.ID,
+							TableId: table2.ID,
+						},
+						Available: true,
+						Reason:    fmt.Sprintf("Can be merged with table %s (total capacity: %d)", table1.Name, totalCapacity),
+						MergedWithTable: &commonpb.TableRef{
+							VenueId: req.VenueId,
+							RoomId:  room.ID,
+							TableId: table1.ID,
+						},
+					})
+
+					log.Info().
+						Str("table1_id", table1.ID).
+						Str("table2_id", table2.ID).
+						Msg("Adding merge suggestions for both tables")
+				}
+			}
+		}
+	}
+
 	return &venuepb.CheckAvailabilityResponse{
-		Tables: []*venuepb.TableAvailability{},
+		Tables: result,
 	}, nil
 }
 

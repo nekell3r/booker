@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	bookingpb "booker/pkg/proto/booking"
 	commonpb "booker/pkg/proto/common"
@@ -558,7 +559,18 @@ func (h *Handler) CheckAvailability(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, resp)
+	// Use protojson to properly serialize protobuf message to JSON
+	// This ensures all fields including merged_with_table are included
+	marshaler := protojson.MarshalOptions{
+		EmitUnpopulated: true,
+		UseProtoNames:   true, // Use snake_case field names
+	}
+	jsonBytes, err := marshaler.Marshal(resp)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, jsonBytes)
 }
 
 func (h *Handler) WebSocket(c echo.Context) error {

@@ -195,6 +195,65 @@ func (r *Repository) GetExpiredHolds(ctx context.Context) ([]*Booking, error) {
 	return bookings, nil
 }
 
+// CheckTableAvailability checks if tables are available for a given slot
+func (r *Repository) CheckTableAvailability(ctx context.Context, venueID string, tableIDs []string, date, startTime, endTime string) (map[string]bool, error) {
+	if len(tableIDs) == 0 {
+		return make(map[string]bool), nil
+	}
+
+	// Build query with IN clause
+	placeholders := make([]string, len(tableIDs))
+	args := []interface{}{venueID, date, startTime, endTime}
+	argPos := 5
+	for i := range tableIDs {
+		placeholders[i] = fmt.Sprintf("$%d", argPos)
+		argPos++
+	}
+	args = append(args, make([]interface{}, len(tableIDs))...)
+	for i, tableID := range tableIDs {
+		args[4+i] = tableID
+	}
+
+	query := fmt.Sprintf(
+		`SELECT DISTINCT table_id FROM bookings 
+		 WHERE venue_id = $1 
+		   AND date = $2 
+		   AND status IN ('held', 'confirmed', 'seated')
+		   AND (
+		     (start_time <= $3 AND end_time > $3) OR
+		     (start_time < $4 AND end_time >= $4) OR
+		     (start_time >= $3 AND end_time <= $4)
+		   )
+		   AND table_id IN (%s)`,
+		fmt.Sprintf("%s", placeholders[0]))
+	for i := 1; i < len(placeholders); i++ {
+		query = query[:len(query)-1] + fmt.Sprintf(", %s)", placeholders[i])
+	}
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	bookedTables := make(map[string]bool)
+	for rows.Next() {
+		var tableID string
+		if err := rows.Scan(&tableID); err != nil {
+			return nil, err
+		}
+		bookedTables[tableID] = true
+	}
+
+	// Build result map - all requested tables, marked as available if not in bookedTables
+	result := make(map[string]bool)
+	for _, tableID := range tableIDs {
+		result[tableID] = !bookedTables[tableID]
+	}
+
+	return result, nil
+}
+
 // Models
 type Booking struct {
 	ID            string

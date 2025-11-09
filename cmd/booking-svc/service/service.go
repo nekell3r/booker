@@ -438,10 +438,61 @@ func (s *Service) getHoldKey(venueID, tableID, date, startTime string) string {
 	return fmt.Sprintf("hold:%s:%s:%s:%s", venueID, tableID, date, startTime)
 }
 
+func (s *Service) CheckTableAvailability(ctx context.Context, req *bookingpb.CheckTableAvailabilityRequest) (*bookingpb.CheckTableAvailabilityResponse, error) {
+	ctx, span := tracing.StartSpan(ctx, "CheckTableAvailability")
+	defer span.End()
+
+	// Calculate end time (default to 120 minutes if not specified)
+	durationMinutes := req.Slot.DurationMinutes
+	if durationMinutes == 0 {
+		durationMinutes = 120
+	}
+	endTime := s.calculateEndTime(req.Slot.StartTime, durationMinutes)
+
+	// Check availability
+	availability, err := s.repo.CheckTableAvailability(ctx, req.VenueId, req.TableIds, req.Slot.Date, req.Slot.StartTime, endTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check table availability: %w", err)
+	}
+
+	// Build response
+	result := make([]*bookingpb.TableAvailabilityInfo, 0, len(req.TableIds))
+	for _, tableID := range req.TableIds {
+		available, ok := availability[tableID]
+		if !ok {
+			available = false
+		}
+		
+		reason := ""
+		if !available {
+			reason = "Table is already booked for this time slot"
+		}
+
+		result = append(result, &bookingpb.TableAvailabilityInfo{
+			TableId:   tableID,
+			Available: available,
+			Reason:    reason,
+		})
+	}
+
+	return &bookingpb.CheckTableAvailabilityResponse{
+		Tables: result,
+	}, nil
+}
+
 func (s *Service) calculateEndTime(startTime string, durationMinutes int32) string {
-	// Simple calculation - in production, use proper time parsing
-	// For MVP, assume format HH:MM
-	return startTime // TODO: Add duration
+	// Parse start time (HH:MM format)
+	start, err := time.Parse("15:04", startTime)
+	if err != nil {
+		log.Warn().Err(err).Str("start_time", startTime).Msg("Failed to parse start time, using default")
+		// Default: add 2 hours
+		start, _ = time.Parse("15:04", "12:00")
+		durationMinutes = 120
+	}
+	
+	// Add duration
+	end := start.Add(time.Duration(durationMinutes) * time.Minute)
+	return end.Format("15:04")
 }
 
 func (s *Service) toBookingProto(b *repository.Booking) *bookingpb.Booking {

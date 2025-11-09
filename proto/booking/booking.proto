@@ -15,6 +15,7 @@ service BookingService {
   rpc MarkSeated(MarkSeatedRequest) returns (Booking);
   rpc MarkFinished(MarkFinishedRequest) returns (Booking);
   rpc MarkNoShow(MarkNoShowRequest) returns (Booking);
+  rpc CheckTableAvailability(CheckTableAvailabilityRequest) returns (CheckTableAvailabilityResponse);
 }
 
 message Booking {
@@ -87,6 +88,22 @@ message MarkNoShowRequest {
 message ListBookingsResponse {
   repeated Booking bookings = 1;
   int32 total = 2;
+}
+
+message CheckTableAvailabilityRequest {
+  string venue_id = 1;
+  repeated string table_ids = 2;
+  common.Slot slot = 3;
+}
+
+message CheckTableAvailabilityResponse {
+  repeated TableAvailabilityInfo tables = 1;
+}
+
+message TableAvailabilityInfo {
+  string table_id = 1;
+  bool available = 2;
+  string reason = 3;
 }
 
 

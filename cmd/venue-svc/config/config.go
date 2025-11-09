@@ -16,8 +16,9 @@ type Config struct {
 	PostgresPassword string
 	RedisAddr      string
 	RedisPassword  string
-	KafkaBrokers   string
-	JaegerEndpoint string
+	KafkaBrokers     string
+	JaegerEndpoint   string
+	BookingSvcAddr   string
 }
 
 func Load() *Config {
@@ -32,8 +33,9 @@ func Load() *Config {
 		PostgresPassword: getEnv("POSTGRES_PASSWORD", "venue_pass"),
 		RedisAddr:       getEnv("REDIS_ADDR", "localhost:6379"),
 		RedisPassword:   getEnv("REDIS_PASSWORD", ""),
-		KafkaBrokers:    getEnv("KAFKA_BROKERS", "localhost:9092"),
-		JaegerEndpoint:  getEnv("JAEGER_ENDPOINT", "http://localhost:14268/api/traces"),
+		KafkaBrokers:     getEnv("KAFKA_BROKERS", "localhost:9092"),
+		JaegerEndpoint:   getEnv("JAEGER_ENDPOINT", "http://localhost:15268/api/traces"),
+		BookingSvcAddr:   getEnv("BOOKING_SVC_ADDR", "localhost:50152"),
 	}
 }
 

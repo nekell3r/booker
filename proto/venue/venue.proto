@@ -196,6 +196,7 @@ message TableAvailability {
   common.TableRef table = 1;
   bool available = 2;
   string reason = 3;
+  common.TableRef merged_with_table = 4; // If this table can be merged with another table
 }
 
 message GetTableLayoutRequest {
