@@ -39,6 +39,7 @@ COPY cmd/ ./cmd/
 COPY pkg/kafka/ ./pkg/kafka/
 COPY pkg/tracing/ ./pkg/tracing/
 COPY pkg/redis/ ./pkg/redis/
+COPY pkg/metrics/ ./pkg/metrics/
 
 # Copy proto generated files from previous stage (after other pkg subdirs)
 COPY --from=protoc-builder /app/pkg/proto ./pkg/proto

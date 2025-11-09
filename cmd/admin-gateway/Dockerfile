@@ -32,6 +32,10 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
+# Build cache invalidation (increment to force rebuild)
+ARG CACHE_BUST=1
+RUN echo "Cache bust: $CACHE_BUST"
+
 # Copy source code first
 COPY cmd/ ./cmd/
 

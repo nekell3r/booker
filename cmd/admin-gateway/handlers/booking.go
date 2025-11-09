@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog/log"
 
 	bookingpb "booker/pkg/proto/booking"
 	commonpb "booker/pkg/proto/common"
@@ -60,8 +61,15 @@ func (h *Handler) CreateVenue(c echo.Context) error {
 		Address  string `json:"address"`
 	}
 	if err := c.Bind(&req); err != nil {
+		log.Warn().Err(err).Msg("Failed to bind CreateVenue request")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
+
+	log.Info().
+		Str("name", req.Name).
+		Str("timezone", req.Timezone).
+		Str("address", req.Address).
+		Msg("Creating venue")
 
 	resp, err := h.venueClient.CreateVenue(c.Request().Context(), &venuepb.CreateVenueRequest{
 		Name:     req.Name,
@@ -69,8 +77,16 @@ func (h *Handler) CreateVenue(c echo.Context) error {
 		Address:  req.Address,
 	})
 	if err != nil {
+		log.Error().Err(err).
+			Str("name", req.Name).
+			Msg("Failed to create venue")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+
+	log.Info().
+		Str("venue_id", resp.Id).
+		Str("name", resp.Name).
+		Msg("Venue created successfully")
 
 	return c.JSON(http.StatusCreated, resp)
 }
@@ -97,13 +113,21 @@ func (h *Handler) UpdateVenue(c echo.Context) error {
 }
 
 func (h *Handler) DeleteVenue(c echo.Context) error {
+	venueID := c.Param("id")
+	
+	log.Info().Str("venue_id", venueID).Msg("Deleting venue")
+	
 	_, err := h.venueClient.DeleteVenue(c.Request().Context(), &venuepb.DeleteVenueRequest{
-		Id: c.Param("id"),
+		Id: venueID,
 	})
 	if err != nil {
+		log.Error().Err(err).
+			Str("venue_id", venueID).
+			Msg("Failed to delete venue")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	log.Info().Str("venue_id", venueID).Msg("Venue deleted successfully")
 	return c.NoContent(http.StatusNoContent)
 }
 

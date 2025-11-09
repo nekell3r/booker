@@ -163,6 +163,11 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    depends_on:
+      - admin-gateway
+      - venue-svc
+      - booking-svc
 
   # Grafana
   grafana:
@@ -197,12 +202,17 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - ENV=development
       - GRPC_VENUE_ADDR=venue-svc:50051
       - GRPC_BOOKING_ADDR=booking-svc:50052
       - REDIS_ADDR=redis-master:6379
       - REDIS_PASSWORD=redis_pass
       - JWT_SECRET=your-secret-key-change-in-production
       - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+    volumes:
+      # Volume для разработки: изменения в web/dist применяются сразу без пересборки
+      # ВНИМАНИЕ: Удалите этот volume в продакшене!
+      - ./web/dist:/root/web/dist:ro
     depends_on:
       - redis-master
       - venue-svc
@@ -235,7 +245,7 @@ services:
       redis-master:
         condition: service_healthy
       redpanda:
-        condition: service_started
+        condition: service_healthy
 
   # Booking Service
   booking-svc:
@@ -264,7 +274,7 @@ services:
       redis-master:
         condition: service_healthy
       redpanda:
-        condition: service_started
+        condition: service_healthy
       venue-svc:
         condition: service_started
 
@@ -279,7 +289,7 @@ services:
       - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
     depends_on:
       redpanda:
-        condition: service_started
+        condition: service_healthy
 
   # Migration service (one-time run)
   migrate:

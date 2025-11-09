@@ -19,6 +19,7 @@ import (
 	"booker/cmd/booking-svc/repository"
 	"booker/cmd/booking-svc/service"
 	"booker/pkg/kafka"
+	"booker/pkg/metrics"
 	"booker/pkg/redis"
 	"booker/pkg/tracing"
 	bookingpb "booker/pkg/proto/booking"
@@ -54,11 +55,28 @@ func main() {
 	// Redis
 	redisClient := redis.NewClient(cfg.RedisAddr, cfg.RedisPassword)
 
-	// Kafka Producer
+	// Kafka Producer with retry logic
 	kafkaBrokers := []string{cfg.KafkaBrokers}
-	producer, err := kafka.NewProducer(kafkaBrokers)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create Kafka producer")
+	var producer *kafka.Producer
+	maxRetries := 20
+	retryDelay := 3 * time.Second
+	log.Info().Strs("brokers", kafkaBrokers).Msg("Attempting to connect to Kafka...")
+	for i := 0; i < maxRetries; i++ {
+		var err error
+		producer, err = kafka.NewProducer(kafkaBrokers)
+		if err == nil {
+			log.Info().Msg("Kafka producer connected successfully")
+			break
+		}
+		if i < maxRetries-1 {
+			log.Warn().Err(err).Int("attempt", i+1).Int("max_retries", maxRetries).Dur("retry_delay", retryDelay).Msg("Failed to create Kafka producer, retrying...")
+			time.Sleep(retryDelay)
+		} else {
+			log.Fatal().Err(err).Int("total_attempts", maxRetries).Msg("Failed to create Kafka producer after all retries")
+		}
+	}
+	if producer == nil {
+		log.Fatal().Msg("Kafka producer is nil after retry loop")
 	}
 	defer producer.Close()
 
@@ -94,7 +112,9 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to listen")
 	}
 
-	s := grpc.NewServer()
+	s := grpc.NewServer(
+		grpc.UnaryInterceptor(metrics.UnaryServerMetricsInterceptor("booking-svc")),
+	)
 	bookingpb.RegisterBookingServiceServer(s, svc)
 
 	// Graceful shutdown

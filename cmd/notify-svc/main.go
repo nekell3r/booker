@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/rs/zerolog"
@@ -27,16 +28,33 @@ func main() {
 	}
 	defer shutdown()
 
-	// Kafka consumer
+	// Kafka consumer with retry logic
 	brokers := []string{os.Getenv("KAFKA_BROKERS")}
 	if brokers[0] == "" {
 		brokers = []string{"localhost:9092"}
 	}
 
 	handler := &BookingEventHandler{}
-	consumer, err := kafka.NewConsumer(brokers, "notify-svc-group", handler)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create consumer")
+	var consumer *kafka.Consumer
+	maxRetries := 20
+	retryDelay := 3 * time.Second
+	log.Info().Strs("brokers", brokers).Msg("Attempting to connect to Kafka...")
+	for i := 0; i < maxRetries; i++ {
+		var err error
+		consumer, err = kafka.NewConsumer(brokers, "notify-svc-group", handler)
+		if err == nil {
+			log.Info().Msg("Kafka consumer connected successfully")
+			break
+		}
+		if i < maxRetries-1 {
+			log.Warn().Err(err).Int("attempt", i+1).Int("max_retries", maxRetries).Dur("retry_delay", retryDelay).Msg("Failed to create Kafka consumer, retrying...")
+			time.Sleep(retryDelay)
+		} else {
+			log.Fatal().Err(err).Int("total_attempts", maxRetries).Msg("Failed to create Kafka consumer after all retries")
+		}
+	}
+	if consumer == nil {
+		log.Fatal().Msg("Kafka consumer is nil after retry loop")
 	}
 	defer consumer.Close()
 

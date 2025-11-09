@@ -27,12 +27,27 @@ func New(redisClient *redis.Client, cfg *config.Config) *Middleware {
 func (m *Middleware) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		authHeader := c.Request().Header.Get("Authorization")
+		log.Info().
+			Str("path", c.Path()).
+			Str("method", c.Request().Method).
+			Str("auth_header", authHeader).
+			Msg("AuthMiddleware: checking request")
+		
 		if authHeader == "" {
+			log.Warn().
+				Str("path", c.Path()).
+				Str("method", c.Request().Method).
+				Msg("AuthMiddleware: missing authorization header")
 			return c.JSON(401, map[string]string{"error": "missing authorization header"})
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
+			log.Warn().
+				Str("path", c.Path()).
+				Str("method", c.Request().Method).
+				Str("auth_header", authHeader).
+				Msg("AuthMiddleware: invalid authorization header format")
 			return c.JSON(401, map[string]string{"error": "invalid authorization header"})
 		}
 
@@ -41,6 +56,12 @@ func (m *Middleware) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		// TODO: Validate JWT token
 		// For now, just extract admin_id from token or use dummy
 		adminID := "admin-1" // This should come from JWT claims
+
+		log.Info().
+			Str("path", c.Path()).
+			Str("method", c.Request().Method).
+			Str("admin_id", adminID).
+			Msg("AuthMiddleware: request authorized")
 
 		c.Set("admin_id", adminID)
 		c.Set("token", token)

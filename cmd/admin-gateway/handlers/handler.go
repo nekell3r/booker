@@ -6,9 +6,9 @@ import (
 
 	"booker/cmd/admin-gateway/config"
 	"booker/cmd/admin-gateway/middleware"
-	"booker/pkg/redis"
 	bookingpb "booker/pkg/proto/booking"
 	venuepb "booker/pkg/proto/venue"
+	"booker/pkg/redis"
 )
 
 type Handler struct {
@@ -30,26 +30,29 @@ func New(venueConn, bookingConn *grpc.ClientConn, redisClient *redis.Client, cfg
 func (h *Handler) SetupRoutes(mw *middleware.Middleware) *echo.Echo {
 	e := echo.New()
 
-	// Add metrics middleware to all routes (before other routes)
+	// Add metrics middleware FIRST to log all requests before Echo Logger
 	e.Use(middleware.MetricsMiddleware("admin-gateway"))
+
+	// Setup basic middleware (Logger, Recover, CORS)
+	mw.SetupMiddleware(e)
 
 	// Metrics endpoint
 	e.GET("/metrics", h.Metrics)
 
 	// API routes - register BEFORE static files to avoid conflicts
 	api := e.Group("/api/v1")
-	
+
 	// API info endpoint
 	e.GET("/api", func(c echo.Context) error {
 		return c.JSON(200, map[string]interface{}{
 			"service": "Admin Gateway",
 			"version": "1.0.0",
 			"endpoints": map[string]string{
-				"auth":           "/api/v1/auth/login",
-				"venues":         "/api/v1/venues",
-				"bookings":       "/api/v1/bookings",
-				"availability":   "/api/v1/availability/check",
-				"websocket":      "/api/v1/ws",
+				"auth":         "/api/v1/auth/login",
+				"venues":       "/api/v1/venues",
+				"bookings":     "/api/v1/bookings",
+				"availability": "/api/v1/availability/check",
+				"websocket":    "/api/v1/ws",
 			},
 		})
 	})
@@ -109,5 +112,3 @@ func (h *Handler) SetupRoutes(mw *middleware.Middleware) *echo.Echo {
 
 	return e
 }
-
-

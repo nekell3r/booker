@@ -9,6 +9,8 @@
 - **booking-svc**: Ядро бронирований с машиной состояний и Redis holds
 - **notify-svc**: Уведомления о событиях бронирований
 
+📖 **Подробная документация по архитектуре**: [ARCHITECTURE.md](ARCHITECTURE.md)
+
 ## Быстрый старт
 
 ### Требования
@@ -90,11 +92,36 @@ docker-compose --profile apps logs --timestamps -f venue-svc
 
 ## API
 
+**Важно**: Все управление системой идет через **Admin Gateway** (порт 8080). 
+
+`venue-svc` и `booking-svc` - это внутренние gRPC сервисы, они не имеют REST API напрямую. Admin Gateway предоставляет единый REST API и проксирует запросы к внутренним сервисам.
+
+### Быстрый старт
+
+```bash
+# Получить информацию об API
+curl http://localhost:8080/api
+
+# Получить токен (для разработки)
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin"}'
+```
+
+### Примеры использования
+
+📖 **Полная документация по API**: [API_USAGE.md](API_USAGE.md)
+
+**Основные endpoints:**
+- `/api/v1/venues` - управление заведениями
+- `/api/v1/bookings` - управление бронированиями
+- `/api/v1/availability/check` - проверка доступности
+
 ### Создание бронирования
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/bookings \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer dummy-token" \
   -H "Content-Type: application/json" \
   -d '{
     "venue_id": "venue-1",
@@ -132,6 +159,25 @@ make test
 
 ```bash
 make logs
+```
+
+### Перезапуск сервисов
+
+```bash
+# Перезапустить все микросервисы (admin-gateway, venue-svc, booking-svc, notify-svc)
+make restart
+
+# Перезапустить конкретный сервис
+make restart-service SERVICE=admin-gateway
+make restart-service SERVICE=venue-svc
+make restart-service SERVICE=booking-svc
+make restart-service SERVICE=notify-svc
+
+# Перезапустить все сервисы (включая инфраструктуру: postgres, redis, kafka и т.д.)
+make restart-all
+
+# Пересобрать и перезапустить конкретный сервис (после изменения кода)
+make rebuild-service SERVICE=admin-gateway
 ```
 
 ### Остановка

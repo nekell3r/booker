@@ -193,9 +193,9 @@
     
     <div class="container">
         <div class="tabs">
-            <button class="tab active" onclick="showTab('today')">Сегодня</button>
-            <button class="tab" onclick="showTab('bookings')">Бронирования</button>
-            <button class="tab" onclick="showTab('venues')">Заведения</button>
+            <button class="tab active" onclick="showTab('today', event)">Сегодня</button>
+            <button class="tab" onclick="showTab('bookings', event)">Бронирования</button>
+            <button class="tab" onclick="showTab('venues', event)">Заведения</button>
         </div>
         
         <div class="content" id="today-tab">
@@ -206,6 +206,23 @@
             <button class="btn btn-primary" onclick="openCreateModal()" style="margin-top: 1rem;">
                 Создать бронирование
             </button>
+        </div>
+        
+        <div class="content" id="bookings-tab" style="display: none;">
+            <h2>Все бронирования</h2>
+            <div class="bookings-list" id="all-bookings-list">
+                <p>Загрузка...</p>
+            </div>
+        </div>
+        
+        <div class="content" id="venues-tab" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2>Заведения</h2>
+                <button class="btn btn-primary" onclick="openCreateVenueModal()">Создать заведение</button>
+            </div>
+            <div id="venues-list">
+                <p>Загрузка...</p>
+            </div>
         </div>
     </div>
     
@@ -250,10 +267,48 @@
         const API_BASE = '/api/v1';
         let token = 'dummy-token'; // В реальном приложении получать из localStorage
         
-        function showTab(tab) {
+        function showTab(tab, evt) {
+            console.log('showTab called:', tab);
+            
+            // Hide all content tabs
+            const allContents = document.querySelectorAll('.content');
+            console.log('Found content elements:', allContents.length);
+            allContents.forEach(c => {
+                c.style.display = 'none';
+                console.log('Hiding:', c.id);
+            });
+            
+            // Remove active class from all tabs
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            // TODO: Load tab content
+            
+            // Show selected tab button
+            const clickedTab = evt ? evt.target : document.querySelector(`.tab[onclick*="${tab}"]`);
+            if (clickedTab) {
+                clickedTab.classList.add('active');
+                console.log('Activated tab button:', clickedTab.textContent);
+            }
+            
+            // Show selected content
+            const tabContent = document.getElementById(tab + '-tab');
+            console.log('Looking for tab content:', tab + '-tab', 'Found:', tabContent);
+            if (tabContent) {
+                tabContent.style.display = 'block';
+                console.log('Showing content:', tabContent.id);
+            } else {
+                console.error('Tab content not found:', tab + '-tab');
+            }
+            
+            // Load tab content
+            if (tab === 'today') {
+                console.log('Loading today bookings');
+                loadBookings();
+            } else if (tab === 'bookings') {
+                console.log('Loading all bookings');
+                loadAllBookings();
+            } else if (tab === 'venues') {
+                console.log('Loading venues');
+                loadVenues();
+            }
         }
         
         async function loadBookings() {
@@ -265,17 +320,32 @@
                     }
                 });
                 const data = await response.json();
-                renderBookings(data.bookings || []);
+                renderBookings(data.bookings || [], 'bookings-list');
             } catch (error) {
                 console.error('Failed to load bookings:', error);
                 document.getElementById('bookings-list').innerHTML = '<p>Ошибка загрузки</p>';
             }
         }
         
-        function renderBookings(bookings) {
-            const list = document.getElementById('bookings-list');
+        async function loadAllBookings() {
+            try {
+                const response = await fetch(`${API_BASE}/bookings`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                renderBookings(data.bookings || [], 'all-bookings-list');
+            } catch (error) {
+                console.error('Failed to load bookings:', error);
+                document.getElementById('all-bookings-list').innerHTML = '<p>Ошибка загрузки</p>';
+            }
+        }
+        
+        function renderBookings(bookings, listId = 'bookings-list') {
+            const list = document.getElementById(listId);
             if (bookings.length === 0) {
-                list.innerHTML = '<p>Нет бронирований на сегодня</p>';
+                list.innerHTML = '<p>Нет бронирований</p>';
                 return;
             }
             
@@ -297,6 +367,110 @@
             `).join('');
         }
         
+        async function loadVenues() {
+            try {
+                console.log('loadVenues: sending request to', `${API_BASE}/venues`);
+                const response = await fetch(`${API_BASE}/venues`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                console.log('loadVenues: response status', response.status, response.statusText);
+                const data = await response.json();
+                console.log('loadVenues: received data', data);
+                renderVenues(data.venues || []);
+            } catch (error) {
+                console.error('Failed to load venues:', error);
+                document.getElementById('venues-list').innerHTML = '<p>Ошибка загрузки</p>';
+            }
+        }
+        
+        function renderVenues(venues) {
+            const list = document.getElementById('venues-list');
+            if (venues.length === 0) {
+                list.innerHTML = '<p>Нет заведений. Создайте первое заведение.</p>';
+                return;
+            }
+            
+            list.innerHTML = venues.map(venue => `
+                <div class="booking-card" style="margin-bottom: 1rem;">
+                    <div class="booking-info" style="flex: 1;">
+                        <h3>${venue.name}</h3>
+                        <p>${venue.address || 'Адрес не указан'}</p>
+                        <p>ID: ${venue.id}</p>
+                    </div>
+                    <div class="booking-actions">
+                        <button class="btn btn-primary" onclick="loadVenueDetails('${venue.id}')">Управление</button>
+                        <button class="btn btn-danger" onclick="deleteVenue('${venue.id}')">Удалить</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        async function loadVenueDetails(venueId) {
+            // TODO: Implement venue details with rooms and tables
+            alert('Детали заведения (комнаты и столы) - в разработке');
+        }
+        
+        async function deleteVenue(venueId) {
+            if (!confirm('Удалить заведение? Это действие нельзя отменить.')) return;
+            try {
+                console.log('deleteVenue: sending DELETE request to', `${API_BASE}/venues/${venueId}`);
+                const response = await fetch(`${API_BASE}/venues/${venueId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                console.log('deleteVenue: response status', response.status, response.statusText);
+                if (response.ok) {
+                    loadVenues();
+                } else {
+                    const errorText = await response.text();
+                    console.error('deleteVenue: error response', errorText);
+                    alert('Ошибка удаления заведения');
+                }
+            } catch (error) {
+                console.error('Failed to delete venue:', error);
+                alert('Ошибка удаления заведения');
+            }
+        }
+        
+        function openCreateVenueModal() {
+            const name = prompt('Название заведения:');
+            if (!name) return;
+            const address = prompt('Адрес:');
+            if (!address) return;
+            const timezone = prompt('Часовой пояс (например, Europe/Moscow):', 'Europe/Moscow');
+            
+            createVenue({ name, address, timezone: timezone || 'Europe/Moscow' });
+        }
+        
+        async function createVenue(venue) {
+            try {
+                console.log('createVenue: sending POST request to', `${API_BASE}/venues`, venue);
+                const response = await fetch(`${API_BASE}/venues`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(venue)
+                });
+                console.log('createVenue: response status', response.status, response.statusText);
+                if (response.ok) {
+                    loadVenues();
+                } else {
+                    const error = await response.json();
+                    console.error('createVenue: error response', error);
+                    alert('Ошибка создания заведения: ' + (error.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('Failed to create venue:', error);
+                alert('Ошибка создания заведения');
+            }
+        }
+        
         async function confirmBooking(id) {
             try {
                 const response = await fetch(`${API_BASE}/bookings/${id}/confirm`, {
@@ -307,10 +481,17 @@
                     }
                 });
                 if (response.ok) {
-                    loadBookings();
+                    // Reload current tab
+                    const activeTab = document.querySelector('.tab.active');
+                    if (activeTab && activeTab.textContent.includes('Сегодня')) {
+                        loadBookings();
+                    } else {
+                        loadAllBookings();
+                    }
                 }
             } catch (error) {
                 console.error('Failed to confirm booking:', error);
+                alert('Ошибка подтверждения бронирования');
             }
         }
         
@@ -324,10 +505,16 @@
                     }
                 });
                 if (response.ok) {
-                    loadBookings();
+                    const activeTab = document.querySelector('.tab.active');
+                    if (activeTab && activeTab.textContent.includes('Сегодня')) {
+                        loadBookings();
+                    } else {
+                        loadAllBookings();
+                    }
                 }
             } catch (error) {
                 console.error('Failed to mark seated:', error);
+                alert('Ошибка отметки о посадке');
             }
         }
         
@@ -341,10 +528,16 @@
                     }
                 });
                 if (response.ok) {
-                    loadBookings();
+                    const activeTab = document.querySelector('.tab.active');
+                    if (activeTab && activeTab.textContent.includes('Сегодня')) {
+                        loadBookings();
+                    } else {
+                        loadAllBookings();
+                    }
                 }
             } catch (error) {
                 console.error('Failed to mark finished:', error);
+                alert('Ошибка завершения бронирования');
             }
         }
         
@@ -360,10 +553,16 @@
                     body: JSON.stringify({ reason: 'Отменено администратором' })
                 });
                 if (response.ok) {
-                    loadBookings();
+                    const activeTab = document.querySelector('.tab.active');
+                    if (activeTab && activeTab.textContent.includes('Сегодня')) {
+                        loadBookings();
+                    } else {
+                        loadAllBookings();
+                    }
                 }
             } catch (error) {
                 console.error('Failed to cancel booking:', error);
+                alert('Ошибка отмены бронирования');
             }
         }
         
@@ -408,9 +607,16 @@
                 });
                 if (response.ok) {
                     closeCreateModal();
-                    loadBookings();
+                    // Reload current tab
+                    const activeTab = document.querySelector('.tab.active');
+                    if (activeTab && activeTab.textContent.includes('Сегодня')) {
+                        loadBookings();
+                    } else {
+                        loadAllBookings();
+                    }
                 } else {
-                    alert('Ошибка создания бронирования');
+                    const error = await response.json();
+                    alert('Ошибка создания бронирования: ' + (error.error || 'Неизвестная ошибка'));
                 }
             } catch (error) {
                 console.error('Failed to create booking:', error);

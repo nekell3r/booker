@@ -74,16 +74,24 @@ rebuild:
 	@docker-compose build --no-cache
 	@docker-compose --profile infra-min --profile apps up -d
 
+# Pull all required images (with manual retry on failure)
+pull-images:
+	@echo "Pulling Docker images (this may take a while)..."
+	@docker-compose --profile infra-min --profile apps pull || (echo "⚠️  Pull failed. This is often due to network issues." && echo "💡 Try running this command again, or check your network connection." && exit 1)
+	@echo "✅ Images pulled successfully!"
+
 # Full setup: start infrastructure, run migrations, seed data
 setup:
 	@echo "Starting full setup..."
-	@echo "Step 1: Starting infrastructure and services..."
-	@docker-compose --profile infra-min --profile apps up -d
-	@echo "Step 2: Waiting for databases to be ready..."
+	@echo "Step 1: Pulling Docker images (if needed)..."
+	@docker-compose --profile infra-min --profile apps pull || echo "⚠️  Some images failed to pull, continuing anyway..."
+	@echo "Step 2: Starting infrastructure and services..."
+	@docker-compose --profile infra-min --profile apps up -d || (echo "❌ Failed to start services. This might be due to:" && echo "   - Network issues pulling images" && echo "   - Port conflicts" && echo "   - Docker daemon not running" && echo "" && echo "💡 Try running 'make pull-images' first, then 'make up'" && exit 1)
+	@echo "Step 3: Waiting for databases to be ready..."
 	@sleep 15
-	@echo "Step 3: Running migrations..."
+	@echo "Step 4: Running migrations..."
 	@docker-compose --profile infra-min run --rm migrate || (echo "Migration failed, retrying..." && sleep 5 && docker-compose --profile infra-min run --rm migrate)
-	@echo "Step 4: Seeding sample data..."
+	@echo "Step 5: Seeding sample data..."
 	@docker-compose --profile infra-min run --rm seed
 	@echo ""
 	@echo "✅ Setup complete!"
@@ -116,10 +124,39 @@ logs-booking:
 logs-notify:
 	@docker-compose --profile infra-min --profile apps logs -f notify-svc
 
-# Restart a specific service
+# Restart all application services
 restart:
-	@docker-compose restart $(SERVICE)
+	@echo "Restarting all application services..."
+	@docker-compose --profile infra-min --profile apps restart
+
+# Restart a specific service
+restart-service:
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "❌ Please specify SERVICE variable. Example: make restart-service SERVICE=admin-gateway"; \
+		exit 1; \
+	fi
+	@echo "Restarting $(SERVICE)..."
+	@docker-compose --profile infra-min --profile apps restart $(SERVICE)
+
+# Restart all services (infrastructure + apps)
+restart-all:
+	@echo "Restarting all services (infrastructure + apps)..."
+	@docker-compose --profile infra-min --profile apps restart
+
+# Rebuild and restart a specific service
+rebuild-service:
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "❌ Please specify SERVICE variable. Example: make rebuild-service SERVICE=admin-gateway"; \
+		exit 1; \
+	fi
+	@echo "Rebuilding and restarting $(SERVICE)..."
+	@docker-compose --profile infra-min --profile apps build $(SERVICE)
+	@docker-compose --profile infra-min --profile apps up -d $(SERVICE)
 
 # Execute command in a service container
 exec:
+	@if [ -z "$(SERVICE)" ] || [ -z "$(CMD)" ]; then \
+		echo "❌ Please specify SERVICE and CMD variables. Example: make exec SERVICE=admin-gateway CMD='sh'"; \
+		exit 1; \
+	fi
 	@docker-compose exec $(SERVICE) $(CMD)

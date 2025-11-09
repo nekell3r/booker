@@ -8,9 +8,9 @@ import (
 	"booker/cmd/venue-svc/config"
 	"booker/cmd/venue-svc/repository"
 	"booker/pkg/kafka"
-	"booker/pkg/tracing"
 	commonpb "booker/pkg/proto/common"
 	venuepb "booker/pkg/proto/venue"
+	"booker/pkg/tracing"
 )
 
 type Service struct {
@@ -32,15 +32,32 @@ func (s *Service) CreateVenue(ctx context.Context, req *venuepb.CreateVenueReque
 	ctx, span := tracing.StartSpan(ctx, "CreateVenue")
 	defer span.End()
 
+	log.Info().
+		Str("name", req.Name).
+		Str("timezone", req.Timezone).
+		Str("address", req.Address).
+		Msg("Creating venue")
+
 	id, err := s.repo.CreateVenue(ctx, req.Name, req.Timezone, req.Address)
 	if err != nil {
+		log.Error().Err(err).
+			Str("name", req.Name).
+			Msg("Failed to create venue in database")
 		return nil, err
 	}
 
 	venue, err := s.repo.GetVenue(ctx, id)
 	if err != nil {
+		log.Error().Err(err).
+			Str("venue_id", id).
+			Msg("Failed to retrieve created venue")
 		return nil, err
 	}
+
+	log.Info().
+		Str("venue_id", id).
+		Str("name", venue.Name).
+		Msg("Venue created successfully")
 
 	return toVenueProto(venue), nil
 }
@@ -85,10 +102,17 @@ func (s *Service) UpdateVenue(ctx context.Context, req *venuepb.UpdateVenueReque
 }
 
 func (s *Service) DeleteVenue(ctx context.Context, req *venuepb.DeleteVenueRequest) (*venuepb.DeleteVenueResponse, error) {
+	log.Info().Str("venue_id", req.Id).Msg("Deleting venue")
+
 	err := s.repo.DeleteVenue(ctx, req.Id)
 	if err != nil {
+		log.Error().Err(err).
+			Str("venue_id", req.Id).
+			Msg("Failed to delete venue")
 		return nil, err
 	}
+
+	log.Info().Str("venue_id", req.Id).Msg("Venue deleted successfully")
 	return &venuepb.DeleteVenueResponse{Success: true}, nil
 }
 
@@ -251,7 +275,7 @@ func (s *Service) DeleteTable(ctx context.Context, req *venuepb.DeleteTableReque
 	defer span.End()
 
 	table, _ := s.repo.GetTable(ctx, req.Id)
-	
+
 	err := s.repo.DeleteTable(ctx, req.Id)
 	if err != nil {
 		return nil, err
@@ -367,4 +391,3 @@ func toTableProto(t *repository.Table) *venuepb.Table {
 		UpdatedAt: t.UpdatedAt.Unix(),
 	}
 }
-
