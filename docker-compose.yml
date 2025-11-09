@@ -43,7 +43,7 @@ services:
     profiles: ["infra-min", "infra-full"]
     command: redis-server --requirepass redis_pass --masterauth redis_pass
     ports:
-      - "6379:6379"
+      - "7379:6379"
     volumes:
       - redis-master-data:/data
     healthcheck:
@@ -80,9 +80,11 @@ services:
 
   redis-sentinel1:
     image: redis:7-alpine
-    profiles: ["infra-min", "infra-full"]
+    profiles: ["infra-full"]  # Disabled for local dev due to Windows DNS issues
     command: >
       sh -c "
+      sleep 3 &&
+      mkdir -p /etc/redis &&
       echo 'sentinel monitor mymaster redis-master 6379 2' > /etc/redis/sentinel.conf &&
       echo 'sentinel auth-pass mymaster redis_pass' >> /etc/redis/sentinel.conf &&
       echo 'sentinel down-after-milliseconds mymaster 5000' >> /etc/redis/sentinel.conf &&
@@ -91,11 +93,14 @@ services:
       redis-sentinel /etc/redis/sentinel.conf
       "
     depends_on:
-      - redis-master
-      - redis-replica1
-      - redis-replica2
+      redis-master:
+        condition: service_healthy
+      redis-replica1:
+        condition: service_healthy
+      redis-replica2:
+        condition: service_healthy
     ports:
-      - "26379:26379"
+      - "27379:26379"
 
   # Kafka (Redpanda для простоты)
   redpanda:
@@ -164,10 +169,8 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.enable-lifecycle'
-    depends_on:
-      - admin-gateway
-      - venue-svc
-      - booking-svc
+    # Note: No hard dependencies on app services - Prometheus will start
+    # regardless and scrape metrics when services become available
 
   # Grafana
   grafana:
@@ -226,7 +229,7 @@ services:
       dockerfile: cmd/venue-svc/Dockerfile
     profiles: ["apps"]
     ports:
-      - "50051:50051"
+      - "50151:50051"
       - "9091:9091"
     environment:
       - POSTGRES_HOST=postgres-venue
@@ -254,7 +257,7 @@ services:
       dockerfile: cmd/booking-svc/Dockerfile
     profiles: ["apps"]
     ports:
-      - "50052:50052"
+      - "50152:50052"
       - "9092:9092"
     environment:
       - POSTGRES_HOST=postgres-booking
