@@ -1,11 +1,11 @@
 # Все команды работают через Docker - не требуется установка Go, protoc и других инструментов локально
 
-.PHONY: up down logs migrate seed gen clean test build rebuild
+.PHONY: up down logs migrate seed gen clean test test-coverage test-verbose test-unit test-package test-coverage-html build rebuild rebuild-all
 
 # Generate protobuf files using Docker
 gen:
 	@echo "Generating protobuf files using Docker..."
-	@docker run --rm -v ${PWD}:/workspace -w /workspace golang:1.21-alpine sh -c "\
+	@docker-compose run --rm test sh -c "\
 		apk add --no-cache protobuf protobuf-dev && \
 		go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
 		go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest && \
@@ -26,7 +26,7 @@ up:
 	@docker-compose --profile infra-min --profile apps up -d
 	@echo "Waiting for services to be ready..."
 	@sleep 5
-	@echo "Services started! Admin Gateway: http://localhost:8080"
+	@echo "Services started! Admin Gateway: http://localhost:18080"
 
 # Start full infrastructure
 up-full:
@@ -51,17 +51,45 @@ seed:
 	@echo "Seeding sample data..."
 	@docker-compose --profile infra-min run --rm seed
 
-# Run tests using Docker
+# Run tests using docker-compose (works reliably on Windows)
 test:
-	@echo "Running tests..."
-	@docker run --rm -v ${PWD}:/workspace -w /workspace golang:1.21-alpine \
-		sh -c "go mod download && go test ./..."
+	@echo "Running all tests..."
+	@docker-compose run --rm test
+
+# Run tests with coverage
+test-coverage:
+	@echo "Running tests with coverage..."
+	@docker-compose run --rm test sh -c "apk add --no-cache git && go mod download && go test -cover ./..."
+
+# Run tests with verbose output
+test-verbose:
+	@echo "Running tests with verbose output..."
+	@docker-compose run --rm test sh -c "apk add --no-cache git && go mod download && go test -v ./..."
+
+# Run only unit tests (skip integration tests)
+test-unit:
+	@echo "Running unit tests only (skipping integration tests)..."
+	@docker-compose run --rm test sh -c "apk add --no-cache git && go mod download && go test -short ./..."
+
+# Run tests for a specific package
+test-package:
+	@if [ -z "$(PACKAGE)" ]; then \
+		echo "❌ Please specify PACKAGE variable. Example: make test-package PACKAGE=./cmd/booking-svc/service"; \
+		exit 1; \
+	fi
+	@echo "Running tests for $(PACKAGE)..."
+	@docker-compose run --rm test sh -c "apk add --no-cache git && go mod download && go test -v $(PACKAGE)"
+
+# Run tests and generate coverage report
+test-coverage-html:
+	@echo "Running tests and generating HTML coverage report..."
+	@docker-compose run --rm test sh -c "apk add --no-cache git && go mod download && go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out -o coverage.html" || true
+	@echo "Coverage report generated: coverage.html"
 
 # Clean generated files
 clean:
 	@echo "Cleaning generated files..."
-	@docker run --rm -v ${PWD}:/workspace -w /workspace alpine \
-		sh -c "rm -rf pkg/proto/*.pb.go pkg/proto/*_grpc.pb.go"
+	@docker-compose run --rm test sh -c "rm -rf pkg/proto/*.pb.go pkg/proto/*_grpc.pb.go"
 
 # Build all services (rebuild images)
 build:
@@ -73,6 +101,40 @@ rebuild:
 	@echo "Rebuilding and restarting services..."
 	@docker-compose build --no-cache
 	@docker-compose --profile infra-min --profile apps up -d
+
+# Full rebuild: stop everything, remove images, rebuild from scratch, and restart
+rebuild-all:
+	@echo "🔄 Starting full rebuild of all services..."
+	@echo ""
+	@echo "Step 1: Stopping all services..."
+	@docker-compose --profile infra-min --profile apps --profile tools down -v || true
+	@echo ""
+	@echo "Step 2: Removing old images for this project..."
+	@echo "Removing images created by docker-compose..."
+	@docker-compose --profile infra-min --profile apps down --rmi local 2>/dev/null || true
+	@echo "Old images removed (if any existed)"
+	@echo ""
+	@echo "Step 3: Building all images from scratch (no cache)..."
+	@docker-compose --profile infra-min --profile apps build --no-cache --pull
+	@echo ""
+	@echo "Step 4: Starting all services..."
+	@docker-compose --profile infra-min --profile apps up -d
+	@echo ""
+	@echo "Step 5: Waiting for services to be ready..."
+	@sleep 15
+	@echo ""
+	@echo "Step 6: Running migrations..."
+	@docker-compose --profile infra-min run --rm migrate || (echo "⚠️  Migration failed, retrying..." && sleep 5 && docker-compose --profile infra-min run --rm migrate)
+	@echo ""
+	@echo "Step 7: Seeding sample data..."
+	@docker-compose --profile infra-min run --rm seed || echo "⚠️  Seed failed or already exists"
+	@echo ""
+	@echo "✅ Full rebuild complete!"
+	@echo "📊 Admin Gateway: http://localhost:18080"
+	@echo "📈 Grafana: http://localhost:3000 (admin/admin)"
+	@echo "🔍 Jaeger: http://localhost:16686"
+	@echo "📉 Prometheus: http://localhost:9090"
+	@echo "📨 Kafka UI: http://localhost:18083"
 
 # Pull all required images (with manual retry on failure)
 pull-images:
@@ -95,11 +157,11 @@ setup:
 	@docker-compose --profile infra-min run --rm seed
 	@echo ""
 	@echo "✅ Setup complete!"
-	@echo "📊 Admin Gateway: http://localhost:8080"
+	@echo "📊 Admin Gateway: http://localhost:18080"
 	@echo "📈 Grafana: http://localhost:3000 (admin/admin)"
 	@echo "🔍 Jaeger: http://localhost:16686"
 	@echo "📉 Prometheus: http://localhost:9090"
-	@echo "📨 Kafka UI: http://localhost:8081"
+	@echo "📨 Kafka UI: http://localhost:18083"
 
 # Show service status
 status:

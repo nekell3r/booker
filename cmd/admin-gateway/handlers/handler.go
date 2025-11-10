@@ -27,6 +27,16 @@ func New(venueConn, bookingConn *grpc.ClientConn, redisClient *redis.Client, cfg
 	}
 }
 
+// NewWithClients создает Handler с готовыми клиентами (для тестов)
+func NewWithClients(venueClient venuepb.VenueServiceClient, bookingClient bookingpb.BookingServiceClient, redisClient *redis.Client, cfg *config.Config) *Handler {
+	return &Handler{
+		venueClient:   venueClient,
+		bookingClient: bookingClient,
+		redisClient:   redisClient,
+		cfg:           cfg,
+	}
+}
+
 func (h *Handler) SetupRoutes(mw *middleware.Middleware) *echo.Echo {
 	e := echo.New()
 

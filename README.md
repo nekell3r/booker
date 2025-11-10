@@ -65,11 +65,11 @@ docker-compose --profile apps logs --timestamps -f venue-svc
 
 ### Доступ к сервисам
 
-- Admin Gateway: http://localhost:8080
+- Admin Gateway: http://localhost:18080
 - Grafana: http://localhost:3000 (admin/admin)
 - Jaeger: http://localhost:16686
 - Prometheus: http://localhost:9090
-- Kafka UI: http://localhost:8081
+- Kafka UI: http://localhost:18083
 
 ## Структура проекта
 
@@ -100,10 +100,10 @@ docker-compose --profile apps logs --timestamps -f venue-svc
 
 ```bash
 # Получить информацию об API
-curl http://localhost:8080/api
+curl http://localhost:18080/api
 
 # Получить токен (для разработки)
-curl -X POST http://localhost:8080/api/v1/auth/login \
+curl -X POST http://localhost:18080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "admin"}'
 ```
@@ -120,7 +120,7 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
 ### Создание бронирования
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/bookings \
+curl -X POST http://localhost:18080/api/v1/bookings \
   -H "Authorization: Bearer dummy-token" \
   -H "Content-Type: application/json" \
   -d '{
